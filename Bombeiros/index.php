@@ -9,9 +9,7 @@ Version: 1.0.0
 Requires at least: 2.8
 */
 
-// Registra o menu na sidebar (hook correto do Rise CRM)
 app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
-  // Tenta carregar a tradução
   $lang_name = "Bombeiros";
   if (function_exists('lang')) {
     $translated = lang('bombeiros');
@@ -30,7 +28,6 @@ app_hooks()->add_filter('app_filter_staff_left_menu', function ($sidebar_menu) {
   return $sidebar_menu;
 });
 
-// Instalação automática de todas as tabelas ao carregar o plugin
 if (function_exists('db_connect')) {
   try {
     $db = db_connect();
@@ -56,7 +53,7 @@ if (function_exists('db_connect')) {
         $db->query($sql);
       }
 
-      // 2. Tabela siamesa_responsaveis
+
       $table_name = $dbprefix . 'siamesa_responsaveis';
       if (!$db->tableExists($table_name)) {
         $sql = "CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -76,7 +73,7 @@ if (function_exists('db_connect')) {
         $db->query($sql);
       }
 
-      // 3. Tabela siamesa_alunos
+
       $table_name = $dbprefix . 'siamesa_alunos';
       if (!$db->tableExists($table_name)) {
         $sql = "CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -106,7 +103,7 @@ if (function_exists('db_connect')) {
         $db->query($sql);
       }
 
-      // 4. Tabela siamesa_cobrancas
+
       $table_name = $dbprefix . 'siamesa_cobrancas';
       if (!$db->tableExists($table_name)) {
         $sql = "CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -128,7 +125,7 @@ if (function_exists('db_connect')) {
         $db->query($sql);
       }
 
-      // 5. Tabela siamesa_presenca
+
       $table_name = $dbprefix . 'siamesa_presenca';
       if (!$db->tableExists($table_name)) {
         $sql = "CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -146,7 +143,7 @@ if (function_exists('db_connect')) {
         $db->query($sql);
       }
 
-      // 6. Tabela siamesa_comprovantes
+
       $table_name = $dbprefix . 'siamesa_comprovantes';
       if (!$db->tableExists($table_name)) {
         $sql = "CREATE TABLE IF NOT EXISTS `" . $table_name . "` (
@@ -180,7 +177,6 @@ if (function_exists('db_connect')) {
       }
     }
   } catch (\Exception $e) {
-    // Se falhar, apenas registra no log - as tabelas podem ser criadas manualmente
     log_message('error', 'Erro ao criar tabelas do plugin Bombeiros: ' . $e->getMessage());
   }
 }

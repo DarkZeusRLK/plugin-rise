@@ -45,40 +45,36 @@
 </div>
 
 <script>
-  $(document).ready(function() {
-    // Aplica máscaras
+  $(document).ready(function () {
     $('.mask-cpf').mask('000.000.000-00', { reverse: true });
-    var SPMaskBehavior = function (val) { 
-      return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009'; 
+    var SPMaskBehavior = function (val) {
+      return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009';
     };
-    var spOptions = { 
-      onKeyPress: function (val, e, field, options) { 
-        field.mask(SPMaskBehavior.apply({}, arguments), options); 
-      } 
+    var spOptions = {
+      onKeyPress: function (val, e, field, options) {
+        field.mask(SPMaskBehavior.apply({}, arguments), options);
+      }
     };
     $('.mask-tel').mask(SPMaskBehavior, spOptions);
 
-    // Barra de pesquisa
-    $('#busca-responsaveis').on('keyup', function() {
+    $('#busca-responsaveis').on('keyup', function () {
       var value = $(this).val().toLowerCase();
-      $('#lista-responsaveis-body tr').filter(function() {
+      $('#lista-responsaveis-body tr').filter(function () {
         var texto = $(this).text().toLowerCase();
         $(this).toggle(texto.indexOf(value) > -1);
       });
     });
 
-    // Marca linha como alterada ao editar
     $(document).on('change input', '.form-control-excel', function () {
       $(this).closest('tr').addClass('linha-alterada');
-      // Mostra o botão de salvar que está no header
       $('#btn-salvar-responsaveis').fadeIn();
     });
   });
 
-  window.salvarAlteracoesResponsaveis = function() {
+  window.salvarAlteracoesResponsaveis = function () {
     let promises = [];
     let hasChanges = false;
-    
+
     $('#lista-responsaveis-body .linha-alterada').each(function () {
       let row = $(this);
       let data = {
@@ -91,25 +87,25 @@
         endereco: row.find('[name="endereco"]').val(),
         '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
       };
-      
+
       hasChanges = true;
-      
+
       console.log("Enviando dados do responsável:", data);
-      
+
       promises.push(
         $.ajax({
           url: '<?php echo get_uri("bombeiros/salvar_responsavel"); ?>',
           type: 'POST',
           data: data,
           dataType: 'json',
-          success: function(response) {
+          success: function (response) {
             console.log("Resposta do servidor:", response);
             return response;
           },
-          error: function(xhr, status, error) {
+          error: function (xhr, status, error) {
             console.error("Erro na requisição:", error);
             console.error("Resposta:", xhr.responseText);
-            
+
             let errorResponse = { success: false, message: "Erro na requisição" };
             try {
               if (xhr.responseText) {
@@ -118,7 +114,7 @@
             } catch (e) {
               errorResponse.message = "Erro na requisição: " + (xhr.responseText || error);
             }
-            
+
             return errorResponse;
           }
         })
@@ -133,7 +129,7 @@
     Promise.all(promises).then(function (results) {
       let allSuccess = true;
       let errorMessages = [];
-      
+
       results.forEach(function (res, index) {
         if (typeof res === 'string') {
           try {
@@ -145,7 +141,7 @@
             return;
           }
         }
-        
+
         if (!res || res.success === false) {
           allSuccess = false;
           let errorMsg = res && res.message ? res.message : "Erro desconhecido ao salvar linha " + (index + 1);
@@ -173,12 +169,12 @@
     });
   }
 
-  window.confirmarExclusaoResponsavel = function(id, btn) {
+  window.confirmarExclusaoResponsavel = function (id, btn) {
     if (typeof confirmarAcao === 'function') {
       confirmarAcao("Excluir Responsável", "Tem certeza que deseja apagar este responsável permanentemente? Esta ação não pode ser desfeita.", function () {
         let row = $(btn).closest('tr');
         $.post('<?php echo get_uri("bombeiros/deletar_responsavel"); ?>', {
-          id: id, 
+          id: id,
           '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
         }, function (res) {
           if (res.success) {
@@ -193,7 +189,7 @@
       if (confirm("Tem certeza que deseja apagar este responsável permanentemente? Esta ação não pode ser desfeita.")) {
         let row = $(btn).closest('tr');
         $.post('<?php echo get_uri("bombeiros/deletar_responsavel"); ?>', {
-          id: id, 
+          id: id,
           '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
         }, function (res) {
           if (res.success) {

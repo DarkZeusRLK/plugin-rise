@@ -259,7 +259,6 @@
   </div>
 </div>
 
-<!-- Modal para Cadastrar/Editar Unidade -->
 <div class="modal fade" id="modal-unidade" tabindex="-1" role="dialog">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
@@ -304,7 +303,7 @@
   </div>
 </div>
 
-<!-- Modal para Gerar Comprovante -->
+
 <div class="modal fade" id="modal-comprovante" tabindex="-1" role="dialog">
   <div class="modal-dialog modal-lg" role="document">
     <div class="modal-content">
@@ -395,7 +394,6 @@
 </div>
 
 <style>
-  /* WRAPPER PRINCIPAL - GARANTE O ESCOPO */
   .rise-siamesa-wrapper {
     --siamesa-text: var(--bs-body-color);
     --siamesa-border: var(--bs-border-color);
@@ -404,7 +402,6 @@
     color: var(--siamesa-text);
   }
 
-  /* RESET DE PAINÉIS E CARDS (Resolve o fundo branco da Image 5 e 6) */
   .rise-siamesa-wrapper .panel,
   .rise-siamesa-wrapper .panel-body,
   .rise-siamesa-wrapper .card,
@@ -415,10 +412,8 @@
     box-shadow: none !important;
   }
 
-  /* RESET DE TABELAS (Neutraliza o Bootstrap 5 nativo da Image 4) */
   .rise-siamesa-wrapper .table {
     --bs-table-bg: transparent;
-    /* Remove bloqueio de cor da Image 62d1a7 */
     --bs-table-color: inherit;
     --bs-table-border-color: var(--siamesa-border);
     --bs-table-hover-bg: rgba(var(--siamesa-accent-rgb), 0.05);
@@ -426,7 +421,6 @@
     color: var(--siamesa-text);
   }
 
-  /* GARANTE QUE O TEXTO NÃO FIQUE PRETO (Image 4/6) */
   .rise-siamesa-wrapper .table th,
   .rise-siamesa-wrapper .table td,
   .rise-siamesa-wrapper strong,
@@ -435,14 +429,13 @@
     color: inherit !important;
   }
 
-  /* CABEÇALHO DA TABELA */
   .rise-siamesa-wrapper .table thead th {
     background-color: transparent;
     border-bottom: 2px solid var(--siamesa-border);
     font-weight: 600;
   }
 
-  /* LINHA DE DETALHE E SUB-NÍVEL (Image 6) */
+
   .rise-siamesa-wrapper .bombeiros-detail-row {
     background-color: rgba(var(--siamesa-accent-rgb), 0.03) !important;
   }
@@ -450,18 +443,14 @@
   .rise-siamesa-wrapper .detail-container {
     padding: 15px 15px 15px 40px;
     border-left: 3px solid var(--primary-color);
-    /* Cor do tema da Image 1 */
     background-color: transparent;
   }
 
   select option {
     background-color: #0b1020 !important;
-    /* Mesma cor escura do seu fundo */
     color: #e5e7eb !important;
-    /* Garante que o texto fique claro */
   }
 
-  /* INPUTS EDITÁVEIS (EXCEL STYLE) */
   .rise-siamesa-wrapper .form-control-excel,
   .rise-siamesa-wrapper .table td input:not([type="checkbox"]),
   .rise-siamesa-wrapper .table td select {
@@ -491,7 +480,6 @@
     color: var(--siamesa-text) !important;
   }
 
-  /* DESTAQUES DE LINHA */
   .rise-siamesa-wrapper .linha-alterada {
     background-color: rgba(var(--bs-warning-rgb), 0.1) !important;
   }
@@ -501,7 +489,6 @@
     font-weight: bold;
   }
 
-  /* UTILITÁRIOS */
   .rise-siamesa-wrapper .text-off {
     opacity: 0.6;
     color: var(--siamesa-text) !important;
@@ -511,23 +498,16 @@
     margin-left: 0.5rem;
   }
 
-  /* CORREÇÃO PARA BADGES */
   .rise-siamesa-wrapper .badge {
     color: #fff !important;
-    /* Badges mantêm contraste branco */
   }
 
-  /* Estiliza o campo de seleção de Status */
   #unidade-status {
     background-color: #0b1020 !important;
-    /* Fundo escuro */
     color: #e5e7eb !important;
-    /* Texto claro */
     border: 1px solid #374151;
-    /* Borda cinza escura para combinar */
   }
 
-  /* Garante que a lista de opções, ao abrir, também seja escura */
   #unidade-status option {
     background-color: #0b1020 !important;
     color: #e5e7eb !important;
@@ -535,7 +515,6 @@
 </style>
 
 <script>
-  // Função para filtrar por unidade
   function filtrarPorUnidade() {
     var unidadeId = $('#filtro-unidade').val();
     var url = '<?php echo get_uri("bombeiros"); ?>';
@@ -547,14 +526,12 @@
     window.location.href = url;
   }
 
-  // Função para abrir modal de unidade
   function abrirModalUnidade(id) {
     $('#form-unidade')[0].reset();
     $('#unidade-id').val('');
     $('#modal-unidade .modal-title').text('Cadastrar Unidade');
 
     if (id) {
-      // Editar - buscar dados
       $.ajax({
         url: '<?php echo get_uri("bombeiros/buscar_unidade"); ?>',
         type: 'POST',
@@ -621,14 +598,12 @@
     var SPMaskBehavior = function (val) { return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009'; },
       spOptions = { onKeyPress: function (val, e, field, options) { field.mask(SPMaskBehavior.apply({}, arguments), options); } };
     $('.mask-tel').mask(SPMaskBehavior, spOptions);
-    // Máscara de moeda brasileira (R$ 1.234,56)
     $('.mask-money').mask('#.##0,00', { reverse: true });
   }
 
   window.abrirModalNovoAluno = function () { $("#modal-aluno").modal("show"); setTimeout(aplicarMascaras, 500); };
   window.abrirModalImportar = function () { $("#modal-importacao-siamesa").modal("show"); };
 
-  // Funcao para substituir o confirm() do navegador
   function confirmarAcao(titulo, mensagem, callback) {
     $("#confirm-title").text(titulo);
     $("#confirm-body").text(mensagem);
@@ -653,7 +628,6 @@
     $('a[href="#tab-financeiro-geral"]').on('shown.bs.tab', carregarRelatorioFinanceiro);
     $('#data-chamada, #filtro-turma-chamada').on('change', carregarListaChamada);
 
-    // Barra de busca de alunos
     $('#busca-alunos').on('keyup', function () {
       var value = $(this).val().toLowerCase();
       $('#lista-alunos-body tr').filter(function () {
@@ -666,20 +640,12 @@
       $(this).closest('tr').addClass('linha-alterada');
       $('#btn-salvar-geral').fadeIn();
     });
-
-    // ============================================
-    // OBSERVER PARA MUDANÇAS DE TEMA DINÂMICAS
-    // Garante que o plugin se adapta quando o tema muda sem recarregar a página
-    // ============================================
     function adaptarAoTema() {
-      // Remove qualquer estilo inline que possa sobrescrever o tema
       var wrapper = $('.rise-siamesa-wrapper');
       if (wrapper.length) {
-        // Remove estilos inline que possam interferir
         wrapper.find('[style*="background-color"], [style*="color"]').each(function () {
           var $el = $(this);
           var style = $el.attr('style') || '';
-          // Remove apenas propriedades de cor, mantendo outras propriedades
           style = style.replace(/background-color[^;]*;?/gi, '');
           style = style.replace(/color[^;]*;?/gi, '');
           if (style.trim()) {
@@ -690,8 +656,6 @@
         });
       }
     }
-
-    // Observa mudanças no atributo data-theme e classes do body
     var observer = new MutationObserver(function (mutations) {
       mutations.forEach(function (mutation) {
         if (mutation.type === 'attributes' && (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
@@ -700,7 +664,6 @@
       });
     });
 
-    // Inicia observação do body para mudanças de tema
     if (document.body) {
       observer.observe(document.body, {
         attributes: true,
@@ -711,7 +674,6 @@
     function limparEstilosInline() {
       var wrapper = $('.rise-siamesa-wrapper');
       if (wrapper.length) {
-        // Remove apenas propriedades de cor de estilos inline, mantendo width, height, etc
         wrapper.find('[style*="background-color"], [style*="color"]').each(function () {
           var $el = $(this);
           var style = $el.attr('style') || '';
@@ -737,7 +699,6 @@
         mutations.forEach(function (mutation) {
           if (mutation.type === 'attributes' &&
             (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
-            // Pequeno delay para garantir que o Rise aplicou as novas variáveis CSS
             setTimeout(limparEstilosInline, 100);
           }
         });
@@ -749,19 +710,14 @@
       });
     }
 
-    // Executa uma vez no carregamento
     limparEstilosInline();
 
-    // Escuta também eventos alternativos caso o Rise use nomes diferentes
     $(document).on('theme-changed risethemechange', function () {
       setTimeout(limparEstilosInline, 100);
     });
 
-    // Formulário de novo aluno com tratamento de erros melhorado
     $("#form-siamesa-aluno").on("submit", function (e) {
       e.preventDefault();
-
-      // Bloqueia o botão para evitar clique duplo
       var btn = $(this).find('button[type="submit"]');
       var textoOriginal = btn.html();
       btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Salvando...');
@@ -781,11 +737,10 @@
           }
         },
         error: function (xhr, status, error) {
-          // Aqui vamos pegar o erro real do PHP
           console.error("Erro na requisição:", error);
           console.error("Resposta do servidor:", xhr.responseText);
 
-          // Tenta parsear a resposta como JSON para mostrar mensagem mais clara
+
           var errorMsg = "Ocorreu um erro no servidor.";
           try {
             var response = JSON.parse(xhr.responseText);
@@ -793,7 +748,6 @@
               errorMsg = response.message;
             }
           } catch (e) {
-            // Se não for JSON, mostra a resposta bruta
             errorMsg = "Erro: " + (xhr.responseText || error);
           }
 
@@ -829,10 +783,9 @@
   }
 
   function carregarResponsaveis() {
-    // Coloca o spinner
+
     $("#area-responsaveis").html('<div class="text-center p-5"><i class="fa fa-spinner fa-spin fa-2x"></i><br>Carregando responsáveis...</div>');
 
-    // Faz a requisição com tratamento de erros
     $.ajax({
       url: '<?php echo get_uri("bombeiros/lista_responsaveis"); ?>',
       type: 'GET',
@@ -851,7 +804,7 @@
     // Coloca o spinner
     $("#area-pagamentos").html('<div class="text-center p-5"><i class="fa fa-spinner fa-spin fa-2x"></i><br>Carregando pagamentos...</div>');
 
-    // Faz a requisição com tratamento de erros
+
     $.ajax({
       url: '<?php echo get_uri("bombeiros/lista_pagamentos"); ?>',
       type: 'GET',
@@ -859,7 +812,6 @@
         $("#area-pagamentos").html(html);
       },
       error: function (xhr, status, error) {
-        // Se der erro, mostra mensagem vermelha e detalhes no console
         console.error("Erro ao carregar pagamentos:", error);
         console.error("Resposta do servidor:", xhr.responseText);
         $("#area-pagamentos").html('<div class="alert alert-danger text-center p20">Erro ao carregar pagamentos. Tente recarregar a página.<br><small>' + error + '</small></div>');
@@ -868,10 +820,9 @@
   }
 
   function carregarRelatorioFinanceiro() {
-    // Coloca o spinner
     $("#area-financeiro-geral").html('<div class="text-center p-5"><i class="fa fa-spinner fa-spin fa-2x"></i><br>Gerando relatório...</div>');
 
-    // Faz a requisição com tratamento de erros
+
     $.ajax({
       url: '<?php echo get_uri("bombeiros/financeiro_resumo"); ?>',
       type: 'GET',
@@ -879,7 +830,6 @@
         $("#area-financeiro-geral").html(html);
       },
       error: function (xhr, status, error) {
-        // Se der erro, mostra mensagem vermelha e detalhes no console
         console.error("Erro ao carregar relatório financeiro:", error);
         console.error("Resposta do servidor:", xhr.responseText);
         $("#area-financeiro-geral").html('<div class="alert alert-danger text-center p20">Erro ao carregar relatório financeiro. Tente recarregar a página.<br><small>' + error + '</small></div>');
@@ -894,13 +844,11 @@
     $('.linha-alterada').each(function () {
       let row = $(this);
 
-      // Prepara dados apenas com campos que existem e foram alterados
       let data = {
         id: row.data('id'),
         '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
       };
 
-      // Adiciona apenas campos que existem e têm valor
       let nomeAluno = row.find('[name="nome_aluno"]').val();
       if (nomeAluno) data.nome_aluno = nomeAluno;
 
@@ -924,7 +872,6 @@
 
       hasChanges = true;
 
-      // Log dos dados que serão enviados
       console.log("Enviando dados para salvar:", data);
 
       promises.push(
@@ -942,7 +889,6 @@
             console.error("Status:", status);
             console.error("Resposta completa:", xhr.responseText);
 
-            // Tenta parsear a resposta como JSON
             let errorResponse = { success: false, message: "Erro na requisição" };
             try {
               if (xhr.responseText) {
@@ -968,7 +914,6 @@
       let errorMessages = [];
 
       results.forEach(function (res, index) {
-        // Verifica se a resposta é um objeto JSON ou string
         if (typeof res === 'string') {
           try {
             res = JSON.parse(res);
@@ -1007,7 +952,6 @@
     });
   }
 
-  // Substituicao do deletar com confirmacao estilizada
   function confirmarExclusao(id, btn) {
     confirmarAcao("Excluir Aluno", "Tem certeza que deseja apagar este aluno permanentemente? Esta ação não pode ser desfeita.", function () {
       let row = $(btn).closest('tr');
@@ -1024,7 +968,6 @@
     });
   }
 
-  // Função para expandir/colapsar parcelas do aluno (usada na aba de pagamentos)
   function toggleParcelas(alunoId) {
     var detailRow = $("#detail-" + alunoId);
     var icon = $("#icon-" + alunoId);
@@ -1038,7 +981,6 @@
     }
   }
 
-  // Função para marcar pagamento como pago (usada na aba de pagamentos)
   function marcarComoPago(idPagamento) {
     confirmarAcao(
       "Confirmar Recebimento",
@@ -1055,7 +997,7 @@
           success: function (res) {
             if (res.success) {
               appAlert.success(res.message);
-              carregarPagamentos(); // Recarrega a lista de pagamentos
+              carregarPagamentos();
             } else {
               appAlert.error(res.message);
             }
@@ -1069,14 +1011,13 @@
     );
   }
 
-  // Função para gerar comprovante de pagamento
+
   function gerarComprovante(cobrancaId, alunoId) {
-    // Abre modal para preencher dados do comprovante
     $('#modal-comprovante').modal('show');
     $('#comprovante-cobranca-id').val(cobrancaId);
     $('#comprovante-aluno-id').val(alunoId);
 
-    // Busca dados da cobrança para pré-preencher
+
     $.ajax({
       url: '<?php echo get_uri("bombeiros/buscar_dados_comprovante"); ?>',
       type: 'POST',
@@ -1098,7 +1039,6 @@
           $('#comprovante-conferido-por').val(dados.conferido_por || '');
           $('#comprovante-data-conferencia').val(dados.data_conferencia || '<?php echo date('Y-m-d'); ?>');
 
-          // Aplica máscaras
           if (dados.responsavel_cpf) {
             $('#comprovante-responsavel-cpf').mask('000.000.000-00');
           }
@@ -1108,14 +1048,12 @@
         }
       },
       error: function () {
-        // Se der erro, deixa os campos vazios para preenchimento manual
         $('#comprovante-data-emissao').val('<?php echo date('Y-m-d'); ?>');
         $('#comprovante-data-conferencia').val('<?php echo date('Y-m-d'); ?>');
       }
     });
   }
 
-  // Salvar e gerar comprovante
   function salvarEgerarComprovante() {
     var btn = $('#btn-salvar-comprovante');
     var textoOriginal = btn.html();
@@ -1137,7 +1075,6 @@
       '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
     };
 
-    // Validação básica
     if (!formData.responsavel_nome || !formData.aluno_nome || !formData.valor || !formData.forma_pagamento) {
       appAlert.error('Por favor, preencha todos os campos obrigatórios.');
       btn.prop('disabled', false).html(textoOriginal);
@@ -1154,9 +1091,7 @@
           appAlert.success(res.message);
           $('#modal-comprovante').modal('hide');
 
-          // Faz download do comprovante
           if (res.download_url) {
-            // Cria link temporário para download
             var link = document.createElement('a');
             link.href = res.download_url;
             link.download = 'Comprovante_SIAMESA_' + res.numero_comprovante + '.html';
@@ -1166,7 +1101,6 @@
 
             appAlert.success('Comprovante baixado com sucesso!');
           } else if (res.pdf_url) {
-            // Fallback: abre em nova aba se não houver download_url
             window.open(res.pdf_url, '_blank');
           }
         } else {

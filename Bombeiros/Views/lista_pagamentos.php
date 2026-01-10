@@ -74,12 +74,6 @@
   </div>
 
   <style>
-    /* ============================================
-       RISE CRM - NATIVE THEME INTEGRATION
-       Arquiteto de Software Sênior - Bootstrap 5
-       ============================================ */
-
-    /* ===== TABELAS - TRANSPARÊNCIA TOTAL ===== */
     .rise-siamesa-wrapper .table {
       --bs-table-bg: transparent;
       --bs-table-color: var(--bs-body-color);
@@ -98,13 +92,11 @@
       border-bottom-color: var(--bs-border-color);
     }
 
-    /* Hover das linhas - usa cor primária do tema */
     .rise-siamesa-wrapper .table-hover tbody tr:hover {
       background-color: rgba(var(--bs-primary-rgb), 0.05);
       color: var(--bs-body-color);
     }
 
-    /* Linha de detalhe - sub-nível sutil */
     .rise-siamesa-wrapper .bombeiros-detail-row {
       background-color: rgba(var(--bs-primary-rgb), 0.03);
     }
@@ -115,14 +107,13 @@
       background-color: rgba(var(--bs-primary-rgb), 0.02);
     }
 
-    /* Tabelas internas dentro de detalhes */
+
     .rise-siamesa-wrapper .detail-container .table {
       border-radius: 4px;
       overflow: hidden;
       --bs-table-bg: transparent;
     }
 
-    /* Utilitários */
     .rise-siamesa-wrapper .text-off {
       opacity: 0.7;
       color: var(--bs-secondary-color);

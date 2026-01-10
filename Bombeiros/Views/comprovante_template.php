@@ -180,7 +180,6 @@
 
 <body>
     <div class="comprovante-container">
-        <!-- Logo e Cabeçalho -->
         <div class="header">
             <div class="logo-text" style="background: #1a4d7a; color: white; padding: 15px; border-radius: 5px; display: inline-block;">
                 SIAMESA
@@ -190,7 +189,6 @@
 
         <div class="titulo">COMPROVANTE DE PAGAMENTO – PROJETO SIAMESA</div>
 
-        <!-- Informações da Empresa -->
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">CNPJ:</span>
@@ -206,7 +204,6 @@
             </div>
         </div>
 
-        <!-- Dados do Comprovante -->
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">Nº do comprovante:</span>
@@ -218,7 +215,6 @@
             </div>
         </div>
 
-        <!-- Dados do Responsável e Aluno -->
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">Responsável:</span>
@@ -240,7 +236,6 @@
             <?php endif; ?>
         </div>
 
-        <!-- Mensalidade -->
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">Mensalidade do Projeto SIAMESA, referente à:</span>
@@ -261,13 +256,11 @@
             </div>
         </div>
 
-        <!-- Valor -->
         <div class="valor-section">
             <div class="valor-label">Valor (R$):</div>
             <div class="valor-value"><?= 'R$ ' . number_format($valor ?? 0, 2, ',', '.'); ?></div>
         </div>
 
-        <!-- Forma de Pagamento -->
         <div class="forma-pagamento">
             <div class="info-row">
                 <span class="info-label">Forma de pagamento:</span>
@@ -289,7 +282,6 @@
             </div>
         </div>
 
-        <!-- Conferência -->
         <div class="info-section">
             <div class="info-row">
                 <span class="info-label">Conferido por:</span>
@@ -301,12 +293,9 @@
             </div>
         </div>
 
-        <!-- Texto de Confirmação -->
         <div class="footer-text">
             Este comprovante confirma o recebimento do valor referente à mensalidade indicada. Guarde-o para eventuais comprovações junto à instituição.
         </div>
-
-        <!-- Rodapé -->
         <div class="slogan">
             PROJETO SIAMESA - Formação, Disciplina e Cidadania.
         </div>
