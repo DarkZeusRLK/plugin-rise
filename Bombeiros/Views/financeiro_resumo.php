@@ -73,6 +73,7 @@
           <?php else: ?>
             <?php foreach ($inadimplentes as $inad): ?>
               <?php
+              // Limpa o número para o link do WhatsApp
               $whats_limpo = preg_replace('/\D/', '', $inad['whats']);
               $mensagem = "Olá " . $inad['resp_nome'] . ", notamos que a parcela de " . ($inad['competencia'] ?? date('m/Y', strtotime($inad['vencimento']))) . " do aluno " . $inad['nome_aluno'] . " está em aberto. Podemos ajudar?";
               $link_wa = "https://wa.me/55" . $whats_limpo . "?text=" . urlencode($mensagem);
@@ -114,6 +115,12 @@
   </div>
 
   <style>
+    /* ============================================
+       RISE CRM - NATIVE THEME INTEGRATION
+       Arquiteto de Software Sênior - Bootstrap 5
+       ============================================ */
+
+    /* ===== PANELS (COMPATIBILIDADE COM BOOTSTRAP 4) ===== */
     .rise-siamesa-wrapper .panel {
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -126,7 +133,7 @@
       background-color: transparent;
     }
 
-
+    /* ===== CARDS ===== */
     .rise-siamesa-wrapper .card {
       background-color: var(--card-bg, var(--bs-body-bg));
       border-color: var(--bs-border-color);
@@ -137,10 +144,12 @@
       border-bottom-color: var(--bs-border-color);
     }
 
+    /* Remove estilo inline do card-header se existir */
     .rise-siamesa-wrapper .card-header[style*="background"] {
       background-color: var(--bs-secondary-bg);
     }
 
+    /* ===== TABELAS - TRANSPARÊNCIA TOTAL ===== */
     .rise-siamesa-wrapper .table {
       --bs-table-bg: transparent;
       --bs-table-color: var(--bs-body-color);
@@ -159,28 +168,29 @@
       border-bottom-color: var(--bs-border-color);
     }
 
-
+    /* Hover das linhas - usa cor primária do tema */
     .rise-siamesa-wrapper .table-hover tbody tr:hover {
       background-color: rgba(var(--bs-primary-rgb), 0.05);
       color: var(--bs-body-color);
     }
 
-
+    /* Tabela striped - fundo alternado sutil */
     .rise-siamesa-wrapper .table-striped tbody tr:nth-of-type(odd) {
       background-color: rgba(var(--bs-primary-rgb), 0.02);
     }
 
-
+    /* ===== LINHA DE TOTAL ===== */
     .rise-siamesa-wrapper tr.total-row {
       font-weight: bold;
       background-color: rgba(var(--bs-warning-rgb), 0.1);
     }
 
-
+    /* Remove estilo inline da linha de total se existir */
     .rise-siamesa-wrapper tr[style*="background-color: #fff3cd"] {
       background-color: rgba(var(--bs-warning-rgb), 0.1);
     }
 
+    /* ===== UTILITÁRIOS ===== */
     .rise-siamesa-wrapper .text-off {
       opacity: 0.7;
       color: var(--bs-secondary-color);

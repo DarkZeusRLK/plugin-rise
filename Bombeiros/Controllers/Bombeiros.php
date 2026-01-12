@@ -63,7 +63,7 @@ class Bombeiros extends Security_Controller
   /**
    * Tela principal: Listagem de Matrículas
    */
-public function index()
+  public function index()
   {
     $db = db_connect();
 
@@ -75,7 +75,7 @@ public function index()
 
     // Filtro de unidade (se fornecido)
     $unidade_id = $this->request->getGet('unidade_id');
-    
+
     $query = $db->table('siamesa_alunos a')
       ->select('a.*, r.nome as responsavel_nome, r.whats as responsavel_whats, u.nome_unidade, u.cidade')
       ->join('siamesa_responsaveis r', 'r.id = a.responsavel_id', 'left')
@@ -100,502 +100,140 @@ public function index()
   /**
    * Salva ou Atualiza Aluno e Responsável
    */
+  /**
+   * Salva ou Atualiza Aluno e Responsável
+   */
   public function salvar()
   {
     $db = db_connect();
 
-    // FUNÇÃO AUXILIAR: Converte Data BR (06/01/2026) para SQL (2026-01-06)
     $converterData = function ($data) {
       if (empty($data))
         return null;
       if (strpos($data, '/') !== false) {
-        // Explode a data em pedaços e inverte
         $partes = explode('/', $data);
-        if (count($partes) == 3) {
+        if (count($partes) == 3)
           return $partes[2] . '-' . $partes[1] . '-' . $partes[0];
-        }
       }
-      return $data; // Retorna normal se já estiver certa
+      return $data;
     };
 
     try {
-      // Log dos dados recebidos para debug
-      log_message('info', 'Dados POST recebidos no salvar: ' . json_encode($this->request->getPost()));
-      
       $db->transStart();
 
       $id = $this->request->getPost('id');
       $num_parcelas = $this->request->getPost('num_parcelas') ?: 6;
 
-      // 1. TRATAMENTO DE DINHEIRO (150,00 ou 150.00 -> 150.00)
+      // Tratamento Valor Mensalidade
       $valor_post = $this->request->getPost('valor_mensalidade');
       $valor_mensalidade = 150.00;
-
       if ($valor_post) {
-        // Converte para string e remove espaços
         $valor_str = trim((string) $valor_post);
-
-        // Se contém vírgula, assume formato brasileiro (ex: 150,00 ou 1.500,00)
-        if (strpos($valor_str, ',') !== false) {
-          // Remove pontos (separadores de milhar) e troca vírgula por ponto
-          $valor_limpo = str_replace('.', '', $valor_str); // Remove pontos de milhar
-          $valor_limpo = str_replace(',', '.', $valor_limpo); // Troca vírgula decimal por ponto
-        } elseif (strpos($valor_str, '.') !== false) {
-          // Se tem ponto mas não tem vírgula, precisa verificar se é milhar ou decimal
-          // Conta quantos pontos existem
-          $partes = explode('.', $valor_str);
-          if (count($partes) == 2 && strlen($partes[1]) <= 2) {
-            // Tem apenas 1 ponto e a parte depois tem 2 dígitos ou menos = é decimal (ex: 150.00)
-            $valor_limpo = $valor_str; // Mantém como está
-          } else {
-            // Tem múltiplos pontos ou parte decimal grande = são separadores de milhar (ex: 1.500.00)
-            $valor_limpo = str_replace('.', '', $valor_str); // Remove todos os pontos
-          }
-        } else {
-          // Não tem ponto nem vírgula, é um número inteiro
-          $valor_limpo = $valor_str;
-        }
-
+        $valor_limpo = str_replace(['.', ','], ['', '.'], $valor_str);
         $valor_mensalidade = floatval($valor_limpo);
-
-        // Validação: se o valor for muito alto (provavelmente erro de conversão)
-        // Exemplo: usuário digitou "150,00" mas campo number enviou "15000"
-        if ($valor_mensalidade > 1000 && $valor_mensalidade < 100000) {
-          // Se o valor original tinha vírgula ou era esperado ter decimais, pode ter sido multiplicado por 100
-          // Tenta dividir por 100 para corrigir
-          $valor_corrigido = $valor_mensalidade / 100;
-          if ($valor_corrigido >= 50 && $valor_corrigido <= 1000) {
-            // Valor corrigido está em faixa razoável, usa ele
-            log_message('info', 'Valor corrigido: ' . $valor_post . ' -> ' . $valor_mensalidade . ' -> ' . $valor_corrigido);
-            $valor_mensalidade = $valor_corrigido;
-          } else {
-            log_message('warning', 'Valor de mensalidade muito alto: ' . $valor_post . ' -> ' . $valor_mensalidade . '. Usando valor padrão.');
-            $valor_mensalidade = 150.00;
-          }
-        } elseif ($valor_mensalidade >= 100000) {
-          log_message('warning', 'Valor de mensalidade extremamente alto: ' . $valor_post . ' -> ' . $valor_mensalidade . '. Usando valor padrão.');
-          $valor_mensalidade = 150.00;
-        }
       }
 
-      // 2. TRATAMENTO DE DATAS
-      $nasc_aluno_post = $this->request->getPost('nascimento_aluno');
-      $nasc_aluno = null;
-      if ($nasc_aluno_post) {
-        $nasc_aluno = $converterData($nasc_aluno_post);
-      }
+      $nasc_aluno = $converterData($this->request->getPost('nascimento_aluno'));
+      $data_inicio = $converterData($this->request->getPost('data_inicio')) ?: date('Y-m-d');
+      $tamanho_camisa = $this->request->getPost('tamanho_camisa');
 
-      $data_inicio_post = $this->request->getPost('data_inicio');
-      $data_inicio = null;
-      if ($data_inicio_post) {
-        $data_inicio = $converterData($data_inicio_post);
-      }
-      if (!$data_inicio)
-        $data_inicio = date('Y-m-d'); // Padrão hoje se vazio
+      // --- PREPARAÇÃO DADOS DO RESPONSÁVEL (WHATSAPP É CHAVE FORTE) ---
+      $whats_limpo = preg_replace('/\D/', '', $this->request->getPost('responsavel_whats'));
 
-      // --- LOGICA DE GRAVAÇÃO ---
+      $dados_resp = [
+        'nome' => trim($this->request->getPost('responsavel_nome')),
+        'nascimento' => $converterData($this->request->getPost('responsavel_nascimento')),
+        'rg' => trim($this->request->getPost('responsavel_rg')),
+        'cpf' => preg_replace('/\D/', '', $this->request->getPost('responsavel_cpf')),
+        'endereco' => trim($this->request->getPost('responsavel_endereco')),
+        'numero' => trim($this->request->getPost('responsavel_numero')),
+        'complemento' => trim($this->request->getPost('responsavel_complemento')),
+        'bairro' => trim($this->request->getPost('responsavel_bairro')),
+        'cep' => preg_replace('/\D/', '', $this->request->getPost('responsavel_cep')),
+        'cidade' => trim($this->request->getPost('responsavel_cidade')),
+        'whats' => $whats_limpo,
+        'celular' => preg_replace('/\D/', '', $this->request->getPost('responsavel_celular')),
+        'recado' => trim($this->request->getPost('responsavel_recado')),
+        'email' => trim($this->request->getPost('responsavel_email')) ?: null,
+        'deleted' => 0
+      ];
 
-      // Se é atualização (tem ID)
-      if ($id) {
-        $aluno = $db->table('siamesa_alunos')->where('id', $id)->get()->getRowArray();
-        
-        if (!$aluno) {
-          $db->transRollback();
-          return $this->response->setJSON([
-            "success" => false,
-            "message" => "Aluno não encontrado com ID: " . $id
-          ]);
-        }
-        
-        $responsavel_id = $aluno['responsavel_id'] ?? null;
+      // LOGICA DE "LOCALIZAR OU CRIAR" RESPONSÁVEL
+      $res_existente = $db->table('siamesa_responsaveis')->where('whats', $whats_limpo)->get()->getRow();
 
-        if ($responsavel_id) {
-          // Atualiza responsável apenas se os dados foram enviados
-          $dados_responsavel = [];
-          
-          if ($this->request->getPost('responsavel_nome')) {
-            $dados_responsavel['nome'] = trim($this->request->getPost('responsavel_nome'));
-          }
-          
-          if ($this->request->getPost('responsavel_cpf')) {
-            $dados_responsavel['cpf'] = preg_replace('/\D/', '', $this->request->getPost('responsavel_cpf'));
-          }
-          
-          if ($this->request->getPost('responsavel_whats')) {
-            $dados_responsavel['whats'] = preg_replace('/\D/', '', $this->request->getPost('responsavel_whats'));
-          }
-          
-          if ($this->request->getPost('responsavel_email')) {
-            $dados_responsavel['email'] = trim($this->request->getPost('responsavel_email'));
-          }
-          
-          // Só atualiza se houver dados
-          if (!empty($dados_responsavel)) {
-            log_message('info', 'Atualizando responsável ID ' . $responsavel_id . ' com dados: ' . json_encode($dados_responsavel));
-            
-            $db->table('siamesa_responsaveis')->where('id', $responsavel_id)->update($dados_responsavel);
-            
-            // Verifica erro na atualização do responsável
-            $error_resp = $db->error();
-            if (!empty($error_resp) && isset($error_resp['code']) && $error_resp['code'] != 0) {
-              $db->transRollback();
-              $mysql_error = $this->getMysqlError($db);
-              log_message('error', 'Erro ao atualizar responsável ID ' . $responsavel_id . ': ' . json_encode($error_resp));
-              log_message('error', 'MySQL Error: ' . $mysql_error);
-              return $this->response->setJSON([
-                "success" => false,
-                "message" => "Erro ao atualizar responsável: " . ($error_resp['message'] ?? $mysql_error ?? 'Erro desconhecido'),
-                "debug" => [
-                  "error" => $error_resp,
-                  "mysql_error" => $mysql_error,
-                  "dados_tentados" => $dados_responsavel
-                ]
-              ]);
-            }
-          }
-        }
-
-        // Prepara dados de atualização do aluno (apenas campos que existem na tabela)
-        $dados_atualizacao = [];
-        
-        // Campos básicos do aluno
-        if ($this->request->getPost('nome_aluno')) {
-          $dados_atualizacao['nome_aluno'] = trim($this->request->getPost('nome_aluno'));
-        }
-        
-        if ($nasc_aluno) {
-          $dados_atualizacao['nascimento_aluno'] = $nasc_aluno;
-        }
-        
-        // Turma/horário - verifica se o campo existe
-        $horario_post = $this->request->getPost('horario');
-        if ($horario_post) {
-          $dados_atualizacao['turma'] = $horario_post;
-        }
-        
-        // Campos de camisa
-        $quer_camisa_post = $this->request->getPost('quer_camisa');
-        if ($quer_camisa_post !== null) {
-          $dados_atualizacao['quer_camisa'] = ($quer_camisa_post == '1' || $quer_camisa_post === true) ? 1 : 0;
-        }
-        
-        $tamanho_camisa_post = $this->request->getPost('tamanho_camisa');
-        if ($tamanho_camisa_post !== null) {
-          $dados_atualizacao['tamanho_camisa'] = $tamanho_camisa_post ?: null;
-        }
-
-        // Valida e salva o status (deve ser exatamente "Ativo" ou "Cancelado")
-        $status_post = trim($this->request->getPost('status'));
-        if (!empty($status_post) && in_array($status_post, ['Ativo', 'Cancelado'], true)) {
-          $dados_atualizacao['status'] = $status_post;
-        }
-
-        // Só atualiza se houver dados para atualizar
-        if (!empty($dados_atualizacao)) {
-          log_message('info', 'Atualizando aluno ID ' . $id . ' com dados: ' . json_encode($dados_atualizacao));
-          
-          // Executa a atualização
-          $db->table('siamesa_alunos')->where('id', $id)->update($dados_atualizacao);
-          
-          // Verifica se houve erro na atualização
-          $error_update = $db->error();
-          if (!empty($error_update) && isset($error_update['code']) && $error_update['code'] != 0) {
-            $db->transRollback();
-            log_message('error', 'Erro ao atualizar aluno ID ' . $id . ': ' . json_encode($error_update));
-            log_message('error', 'Dados tentados: ' . json_encode($dados_atualizacao));
-            log_message('error', 'Dados POST recebidos: ' . json_encode($this->request->getPost()));
-            
-            // Tenta obter mais detalhes do erro MySQL
-            $mysql_error = $this->getMysqlError($db);
-            
-            return $this->response->setJSON([
-              "success" => false,
-              "message" => "Erro ao atualizar aluno: " . ($error_update['message'] ?? $mysql_error ?? 'Erro desconhecido'),
-              "debug" => [
-                "error" => $error_update,
-                "mysql_error" => $mysql_error,
-                "dados_tentados" => $dados_atualizacao,
-                "aluno_id" => $id
-              ]
-            ]);
-          }
-        } else {
-          log_message('info', 'Nenhum dado para atualizar no aluno ID ' . $id);
-        }
-
+      if ($res_existente) {
+        // Se já existe esse WhatsApp, atualizamos os dados cadastrais
+        $responsavel_id = $res_existente->id;
+        $db->table('siamesa_responsaveis')->where('id', $responsavel_id)->update($dados_resp);
       } else {
-        // NOVO CADASTRO - Primeiro insere o responsável
-        $db->table('siamesa_responsaveis')->insert([
-          'nome' => trim($this->request->getPost('responsavel_nome')),
-          'cpf' => preg_replace('/\D/', '', $this->request->getPost('responsavel_cpf')),
-          'whats' => preg_replace('/\D/', '', $this->request->getPost('responsavel_whats')),
-          'email' => trim($this->request->getPost('responsavel_email')) ?: null
-        ]);
+        // Se é novo, insere
+        $db->table('siamesa_responsaveis')->insert($dados_resp);
         $responsavel_id = $db->insertID();
+      }
 
-        // Verifica se houve erro ao inserir responsável
-        if (!$responsavel_id) {
-          $error = $db->error();
-          $db->transRollback();
-          log_message('error', 'Erro ao inserir responsável: ' . json_encode($error));
-          log_message('error', 'Dados POST: ' . json_encode($this->request->getPost()));
-          return $this->response->setJSON([
-            "success" => false,
-            "message" => "Erro ao salvar responsável: " . ($error['message'] ?? 'Erro desconhecido - verifique os logs'),
-            "debug" => [
-              "error" => $error,
-              "data_post" => $this->request->getPost()
-            ]
-          ]);
-        }
+      // --- PREPARAÇÃO DADOS DO ALUNO ---
+      $dados_aluno = [
+        'responsavel_id' => $responsavel_id,
+        'nome_aluno' => trim($this->request->getPost('nome_aluno')),
+        'rg_aluno' => trim($this->request->getPost('rg_aluno')),
+        'cpf_aluno' => preg_replace('/\D/', '', $this->request->getPost('cpf_aluno')),
+        'nascimento_aluno' => $nasc_aluno,
+        'turma' => $this->request->getPost('horario'),
+        'valor_mensalidade' => $valor_mensalidade,
+        'data_inicio' => $data_inicio,
+        'tamanho_camisa' => $tamanho_camisa,
+        'status' => $this->request->getPost('status') ?: 'Ativo'
+      ];
 
-        // Depois insere o aluno
-        $unidade_id = $this->request->getPost('unidade_id');
-        if (!$unidade_id) {
-          $db->transRollback();
-          return $this->response->setJSON([
-            "success" => false,
-            "message" => "Unidade é obrigatória."
-          ]);
-        }
+      if ($id) {
+        // Atualização de Aluno
+        $db->table('siamesa_alunos')->where('id', $id)->update($dados_aluno);
+        $mensagem = "Dados atualizados com sucesso!";
+      } else {
+        // Novo Aluno
+        $dados_aluno['unidade_id'] = $this->request->getPost('unidade_id');
+        $dados_aluno['data_matricula'] = date('Y-m-d');
+        $dados_aluno['deleted'] = 0;
 
-        $db->table('siamesa_alunos')->insert([
-          'responsavel_id' => $responsavel_id,
-          'unidade_id' => $unidade_id,
-          'nome_aluno' => trim($this->request->getPost('nome_aluno')),
-          'nascimento_aluno' => $nasc_aluno,
-          'turma' => $this->request->getPost('horario'),
-          'valor_mensalidade' => $valor_mensalidade,
-          'data_inicio' => $data_inicio,
-          'data_matricula' => date('Y-m-d'),
-          'quer_camisa' => ($this->request->getPost('quer_camisa') == '1' || $this->request->getPost('quer_camisa') === true) ? 1 : 0,
-          'tamanho_camisa' => $this->request->getPost('tamanho_camisa') ?: null,
-          'status' => 'Ativo',
-          'deleted' => 0
-        ]);
+        $db->table('siamesa_alunos')->insert($dados_aluno);
         $aluno_id = $db->insertID();
 
-        // Verifica se houve erro ao inserir aluno
-        if (!$aluno_id) {
-          $error = $db->error();
-          $db->transRollback();
-          log_message('error', 'Erro ao inserir aluno: ' . json_encode($error));
-          log_message('error', 'Responsável ID: ' . $responsavel_id);
-          return $this->response->setJSON([
-            "success" => false,
-            "message" => "Erro ao salvar aluno: " . ($error['message'] ?? 'Erro desconhecido - verifique os logs'),
-            "debug" => [
-              "error" => $error,
-              "responsavel_id" => $responsavel_id
-            ]
+        // Gera Parcelas
+        for ($i = 0; $i < $num_parcelas; $i++) {
+          $venc = date('Y-m-d', strtotime($data_inicio . " +$i month"));
+          $db->table('siamesa_cobrancas')->insert([
+            'aluno_id' => $aluno_id,
+            'vencimento' => $venc,
+            'valor' => $valor_mensalidade,
+            'competencia' => date('m/Y', strtotime($venc)),
+            'status' => 'Pendente',
+            'tipo' => 'Mensalidade'
           ]);
         }
 
-        // GERAR PARCELAS
-        try {
-          for ($i = 0; $i < $num_parcelas; $i++) {
-            $venc = date('Y-m-d', strtotime($data_inicio . " +$i month"));
-            $db->table('siamesa_cobrancas')->insert([
-              'aluno_id' => $aluno_id,
-              'vencimento' => $venc,
-              'valor' => $valor_mensalidade,
-              'competencia' => date('m/Y', strtotime($venc)),
-              'status' => 'Pendente',
-              'tipo' => 'Mensalidade'
-            ]);
-
-            // Verifica se houve erro ao inserir parcela
-            $error = $db->error();
-            if (!empty($error['code']) || !empty($error['message'])) {
-              $db->transRollback();
-              $mysql_error = $this->getMysqlError($db);
-              log_message('error', 'Erro ao inserir parcela ' . ($i + 1) . ': ' . json_encode($error));
-              log_message('error', 'MySQL Error: ' . $mysql_error);
-              return $this->response->setJSON([
-                "success" => false,
-                "message" => "Erro ao gerar parcela " . ($i + 1) . ": " . ($error['message'] ?? $mysql_error ?? 'Erro desconhecido'),
-                "debug" => [
-                  "error" => $error,
-                  "mysql_error" => $mysql_error,
-                  "parcela_num" => $i + 1,
-                  "vencimento" => $venc,
-                  "tabela" => "siamesa_cobrancas"
-                ]
-              ]);
-            }
-          }
-        } catch (\Exception $e) {
-          $db->transRollback();
-          $mysql_error = $this->getMysqlError($db);
-          log_message('error', 'Exception ao inserir parcelas: ' . $e->getMessage());
-          return $this->response->setJSON([
-            "success" => false,
-            "message" => "Erro ao gerar parcelas: " . $e->getMessage(),
-            "debug" => [
-              "exception" => $e->getMessage(),
-              "mysql_error" => $mysql_error,
-              "file" => $e->getFile(),
-              "line" => $e->getLine()
-            ]
-          ]);
-        }
-
-        // COBRANÇA CAMISA
-        if ($this->request->getPost('quer_camisa') == '1' || $this->request->getPost('quer_camisa') === true) {
-          try {
-            $tamanho_camisa = $this->request->getPost('tamanho_camisa') ?: '';
-            $db->table('siamesa_cobrancas')->insert([
-              'aluno_id' => $aluno_id,
-              'vencimento' => date('Y-m-d'),
-              'valor' => 67.00,
-              'competencia' => date('m/Y'),
-              'status' => 'Pendente',
-              'tipo' => 'Camiseta'
-              // Nota: A informação do tamanho da camisa está salva na tabela siamesa_alunos no campo tamanho_camisa
-            ]);
-
-            // Verifica se houve erro ao inserir cobrança da camisa
-            $error = $db->error();
-            if (!empty($error['code']) || !empty($error['message'])) {
-              $db->transRollback();
-              $mysql_error = $this->getMysqlError($db);
-              log_message('error', 'Erro ao inserir cobrança de camisa: ' . json_encode($error));
-              return $this->response->setJSON([
-                "success" => false,
-                "message" => "Erro ao gerar cobrança de camisa: " . ($error['message'] ?? $mysql_error ?? 'Erro desconhecido'),
-                "debug" => [
-                  "error" => $error,
-                  "mysql_error" => $mysql_error
-                ]
-              ]);
-            }
-          } catch (\Exception $e) {
-            $db->transRollback();
-            $mysql_error = $this->getMysqlError($db);
-            log_message('error', 'Exception ao inserir cobrança de camisa: ' . $e->getMessage());
-            return $this->response->setJSON([
-              "success" => false,
-              "message" => "Erro ao gerar cobrança de camisa: " . $e->getMessage(),
-              "debug" => [
-                "exception" => $e->getMessage(),
-                "mysql_error" => $mysql_error
-              ]
-            ]);
-          }
-        }
-      }
-
-      // Verifica se há erro ANTES de completar a transação
-      $error_before_complete = $db->error();
-      if (!empty($error_before_complete) && isset($error_before_complete['code']) && $error_before_complete['code'] != 0) {
-        $db->transRollback();
-        $mysql_error = $this->getMysqlError($db);
-        log_message('error', 'Erro detectado ANTES de completar transação: ' . json_encode($error_before_complete));
-        log_message('error', 'MySQL Error: ' . $mysql_error);
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro antes de completar transação: " . ($error_before_complete['message'] ?? $mysql_error ?? 'Erro desconhecido'),
-          "debug" => [
-            "error" => $error_before_complete,
-            "mysql_error" => $mysql_error
-          ]
+        // Gera Cobrança Camisa
+        $db->table('siamesa_cobrancas')->insert([
+          'aluno_id' => $aluno_id,
+          'vencimento' => date('Y-m-d'),
+          'valor' => 67.00,
+          'competencia' => date('m/Y'),
+          'status' => 'Pendente',
+          'tipo' => 'Camiseta'
         ]);
+
+        $mensagem = "Matrícula realizada com sucesso!";
       }
 
-      // Completa a transação
       $db->transComplete();
 
-      // Verifica se a transação foi bem-sucedida DEPOIS de completar
       if ($db->transStatus() === false) {
-        $error_after_complete = $db->error();
-        $mysql_error = $this->getMysqlError($db);
-
-        // Log detalhado do erro
-        log_message('error', 'Erro na transação - Status: ' . ($db->transStatus() ? 'true' : 'false'));
-        log_message('error', 'Erro antes de completar: ' . json_encode($error_before_complete));
-        log_message('error', 'Erro depois de completar: ' . json_encode($error_after_complete));
-        log_message('error', 'MySQL Error direto: ' . $mysql_error);
-        log_message('error', 'Dados recebidos: ' . json_encode($this->request->getPost()));
-
-        // Prioriza mensagens de erro na seguinte ordem:
-        $error_message = '';
-        if (!empty($error_after_complete['message'])) {
-          $error_message = $error_after_complete['message'];
-        } elseif (!empty($error_before_complete['message'])) {
-          $error_message = $error_before_complete['message'];
-        } elseif (!empty($mysql_error) && $mysql_error !== 'N/A') {
-          $error_message = $mysql_error;
-        } elseif (!empty($error_after_complete['code'])) {
-          $error_message = 'Erro SQL código ' . $error_after_complete['code'];
-        } elseif (!empty($error_before_complete['code'])) {
-          $error_message = 'Erro SQL código ' . $error_before_complete['code'];
-        } else {
-          // Último recurso: verifica se alguma tabela não existe
-          $error_message = 'Erro desconhecido na transação. Possíveis causas: tabela não existe, campo inválido ou constraint violada. Verifique os logs do servidor.';
-        }
-
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro SQL: " . $error_message,
-          "debug" => [
-            "error_before_complete" => $error_before_complete,
-            "error_after_complete" => $error_after_complete,
-            "mysql_error" => $mysql_error,
-            "trans_status" => $db->transStatus(),
-            "data_recebida" => $this->request->getPost(),
-            "aluno_id" => isset($aluno_id) ? $aluno_id : null,
-            "responsavel_id" => isset($responsavel_id) ? $responsavel_id : null
-          ]
-        ]);
+        return $this->response->setJSON(["success" => false, "message" => "Erro na transação bancária."]);
       }
 
-      // Verifica se houve erro antes de retornar sucesso
-      $error_final = $db->error();
-      if (!empty($error_final) && isset($error_final['code']) && $error_final['code'] != 0) {
-        log_message('error', 'Erro após transação: ' . json_encode($error_final));
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro ao salvar: " . ($error_final['message'] ?? 'Erro desconhecido')
-        ]);
-      }
-
-      // Mensagem diferente para atualização vs novo cadastro
-      $mensagem = $id ? "Dados atualizados com sucesso!" : "Matrícula realizada com sucesso!";
       return $this->response->setJSON(["success" => true, "message" => $mensagem]);
 
-    } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
-      // Captura erros específicos do banco de dados
-      $error = $db->error();
-      log_message('error', 'DatabaseException: ' . $e->getMessage());
-      log_message('error', 'Trace: ' . $e->getTraceAsString());
-
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro no banco de dados: " . $e->getMessage(),
-        "debug" => [
-          "exception" => $e->getMessage(),
-          "file" => $e->getFile(),
-          "line" => $e->getLine(),
-          "error" => $error,
-          "mysql_error" => $this->getMysqlError($db)
-        ]
-      ]);
     } catch (\Exception $e) {
-      // Captura qualquer outro erro
-      log_message('error', 'Exception: ' . $e->getMessage());
-      log_message('error', 'File: ' . $e->getFile() . ' Line: ' . $e->getLine());
-      log_message('error', 'Trace: ' . $e->getTraceAsString());
-
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro: " . $e->getMessage(),
-        "debug" => [
-          "exception" => $e->getMessage(),
-          "file" => $e->getFile(),
-          "line" => $e->getLine(),
-          "class" => get_class($e)
-        ]
-      ]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
     }
   }
 
@@ -697,68 +335,108 @@ public function index()
   public function importar_csv()
   {
     $file = $this->request->getFile('file');
-    if (!$file || !$file->isValid() || $file->getExtension() !== 'csv') {
+    if (!$file || !$file->isValid()) {
       return $this->response->setJSON(["success" => false, "message" => "Arquivo inválido."]);
     }
 
     $db = db_connect();
-    $handle = fopen($file->getTempName(), "r");
-    fgetcsv($handle, 1000, ";"); // Pula cabeçalho
+    $filePath = $file->getTempName();
+
+    // Lida com encoding para evitar caracteres estranhos
+    $content = file_get_contents($filePath);
+    if (!mb_check_encoding($content, 'UTF-8')) {
+      $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
+      file_put_contents($filePath, $content);
+    }
+
+    $handle = fopen($filePath, "r");
+    fgetcsv($handle, 2000, ";"); // Pula o cabeçalho do seu modelo
 
     $importados = 0;
+    $unidade_padrao = 1;
+
+    // Helpers de limpeza
+    $converteData = function ($data) {
+      if (empty(trim($data)))
+        return null;
+      $parts = explode('/', trim($data));
+      return (count($parts) == 3) ? "{$parts[2]}-{$parts[1]}-{$parts[0]}" : null;
+    };
+    $limpaDoc = function ($val) {
+      return preg_replace('/\D/', '', $val);
+    };
+    $limpaMoeda = function ($val) {
+      return (float) str_replace(',', '.', str_replace(['R$', '.', ' '], '', $val));
+    };
+
     try {
-      while (($row = fgetcsv($handle, 1000, ";")) !== FALSE) {
-        if (count($row) < 10)
-          continue;
+      while (($row = fgetcsv($handle, 2000, ";")) !== FALSE) {
+        if (count($row) < 14)
+          continue; // Pula linhas incompletas
 
         $db->transStart();
 
-        // 1. Responsável
-        // Insere responsável usando SQL direto
-        $db->table('siamesa_responsaveis')->insert([
-          'nome' => $row[0],
-          'cpf' => preg_replace('/\D/', '', $row[1]),
-          'whats' => $row[2],
-          'email' => $row[3]
-        ]);
-        $resp_id = $db->insertID();
+        // 1. RESPONSÁVEL (Colunas 0 a 12)
+        $cpf_resp = $limpaDoc($row[3]);
+        $resp_id = null;
 
-        // 2. Aluno (Colunas 10 e 11 para camisa)
-        $db->table('siamesa_alunos')->insert([
-          'responsavel_id' => $resp_id,
-          'nome_aluno' => $row[4],
-          'nascimento_aluno' => $row[5],
-          'turma' => $row[6],
-          'valor_mensalidade' => $row[7],
-          'data_inicio' => $row[9],
-          'quer_camisa' => $row[10] ?? 0,
-          'tamanho_camisa' => $row[11] ?? null,
-          'status' => 'Ativo',
-          'deleted' => 0
-        ]);
-        $aluno_id = $db->insertID();
-
-        // 3. Financeiro
-        $parcelas = (int) $row[8];
-        for ($i = 0; $i < $parcelas; $i++) {
-          $venc = date('Y-m-d', strtotime($row[9] . " +$i month"));
-          $db->table('siamesa_cobrancas')->insert([
-            'aluno_id' => $aluno_id,
-            'vencimento' => $venc,
-            'valor' => $row[7],
-            'competencia' => date('m/Y', strtotime($venc)),
-            'status' => 'Pendente',
-            'tipo' => 'Mensalidade'
-          ]);
+        if (!empty($cpf_resp)) {
+          $existente = $db->table('siamesa_responsaveis')->where('cpf', $cpf_resp)->get()->getRow();
+          if ($existente)
+            $resp_id = $existente->id;
         }
 
+        $dados_resp = [
+          'nome' => mb_convert_case(trim($row[0]), MB_CASE_TITLE, "UTF-8"),
+          'nascimento' => $converteData($row[1]),
+          'rg' => trim($row[2]),
+          'cpf' => $cpf_resp,
+          'endereco' => trim($row[4]),
+          'numero' => trim($row[5]),
+          'complemento' => trim($row[6]),
+          'bairro' => trim($row[7]),
+          'cep' => $limpaDoc($row[8]),
+          'cidade' => trim($row[9]),
+          'whats' => $limpaDoc($row[10]),
+          'celular' => $limpaDoc($row[11]),
+          'email' => strtolower(trim($row[12])),
+          'status' => 'Ativo'
+        ];
+
+        if ($resp_id) {
+          $db->table('siamesa_responsaveis')->where('id', $resp_id)->update($dados_resp);
+        } else {
+          $db->table('siamesa_responsaveis')->insert($dados_resp);
+          $resp_id = $db->insertID();
+        }
+
+        // 2. ALUNO (Colunas 13 a 25)
+        $dados_aluno = [
+          'unidade_id' => $unidade_padrao,
+          'responsavel_id' => $resp_id,
+          'nome_aluno' => mb_convert_case(trim($row[13]), MB_CASE_TITLE, "UTF-8"),
+          'nascimento_aluno' => $converteData($row[14]),
+          'rg_aluno' => trim($row[15] ?? ''),
+          'cpf_aluno' => $limpaDoc($row[16] ?? ''),
+          'turma' => trim($row[18]), // Coluna "Horario"
+          'valor_mensalidade' => $limpaMoeda($row[19]),
+          'data_matricula' => date('Y-m-d'),
+          'data_inicio' => $converteData($row[24]),
+          'tamanho_camisa' => trim($row[25]),
+          'status' => 'Ativo',
+          'deleted' => 0
+        ];
+
+        $db->table('siamesa_alunos')->insert($dados_aluno);
         $db->transComplete();
-        $importados++;
+
+        if ($db->transStatus())
+          $importados++;
       }
       fclose($handle);
-      return $this->response->setJSON(["success" => true, "message" => "$importados alunos importados!"]);
+      return $this->response->setJSON(["success" => true, "message" => "$importados registros processados!"]);
     } catch (\Exception $e) {
-      return $this->response->setJSON(["success" => false, "message" => $e->getMessage()]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
     }
   }
 
@@ -877,7 +555,7 @@ public function index()
   {
     try {
       $db = db_connect();
-      
+
       // Busca todos os responsáveis - o campo deleted existe na tabela conforme estrutura mostrada
       $view_data['responsaveis'] = $db->table('siamesa_responsaveis')
         ->where('deleted', 0)
@@ -897,54 +575,35 @@ public function index()
   public function salvar_responsavel()
   {
     $db = db_connect();
-    
     try {
-      $db->transStart();
-      
       $id = $this->request->getPost('id');
-      
+
+      // LIMPEZA OBRIGATÓRIA: Remove tudo que não é número
+      $whats = preg_replace('/\D/', '', $this->request->getPost('whats'));
+      $cpf = preg_replace('/\D/', '', $this->request->getPost('cpf'));
+      $cel = preg_replace('/\D/', '', $this->request->getPost('celular'));
+
+      if (empty($whats)) {
+        return $this->response->setJSON(["success" => false, "message" => "O WhatsApp é obrigatório."]);
+      }
+
       $dados = [
         'nome' => trim($this->request->getPost('nome')),
-        'cpf' => preg_replace('/\D/', '', $this->request->getPost('cpf')),
-        'whats' => preg_replace('/\D/', '', $this->request->getPost('whats')),
-        'celular' => preg_replace('/\D/', '', $this->request->getPost('celular')),
+        'cpf' => $cpf,
+        'whats' => $whats,
+        'celular' => $cel,
         'email' => trim($this->request->getPost('email')),
         'endereco' => trim($this->request->getPost('endereco'))
       ];
-      
-      // Remove campos vazios
-      $dados = array_filter($dados, function($value) {
-        return $value !== null && $value !== '';
-      });
-      
-      if ($id) {
-        // Atualização
-        $db->table('siamesa_responsaveis')->where('id', $id)->update($dados);
-      } else {
-        // Novo (não deveria acontecer aqui, mas por segurança)
-        $dados['deleted'] = 0;
-        $db->table('siamesa_responsaveis')->insert($dados);
-      }
-      
-      $db->transComplete();
-      
-      if ($db->transStatus() === false) {
-        $error = $db->error();
-        log_message('error', 'Erro ao salvar responsável: ' . json_encode($error));
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro ao salvar: " . ($error['message'] ?? 'Erro desconhecido')
-        ]);
-      }
-      
-      return $this->response->setJSON(["success" => true, "message" => "Responsável salvo com sucesso!"]);
-      
+
+      // Usa Query Builder para garantir que o prefixo da tabela seja aplicado corretamente
+      $db->table('siamesa_responsaveis')->where('id', $id)->update($dados);
+
+      return $this->response->setJSON(["success" => true]);
     } catch (\Exception $e) {
-      log_message('error', 'Exception ao salvar responsável: ' . $e->getMessage());
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro: " . $e->getMessage()
-      ]);
+      // Log para você ver o erro no servidor
+      log_message('error', 'Erro ao salvar responsável: ' . $e->getMessage());
+      return $this->response->setJSON(["success" => false, "message" => "Erro no banco: " . $e->getMessage()]);
     }
   }
 
@@ -955,22 +614,22 @@ public function index()
   {
     $db = db_connect();
     $id = $this->request->getPost('id');
-    
+
     // Verifica se o responsável tem alunos vinculados
     $tem_alunos = $db->table('siamesa_alunos')
       ->where(['responsavel_id' => $id, 'deleted' => 0])
       ->countAllResults();
-    
+
     if ($tem_alunos > 0) {
       return $this->response->setJSON([
         "success" => false,
         "message" => "Não é possível excluir este responsável pois existem alunos vinculados a ele."
       ]);
     }
-    
+
     // Marca como deletado (soft delete)
     $db->table('siamesa_responsaveis')->where('id', $id)->update(['deleted' => 1]);
-    
+
     return $this->response->setJSON(["success" => true, "message" => "Responsável removido com sucesso!"]);
   }
 
@@ -1010,8 +669,8 @@ public function index()
       // Formata CPF
       $cpf_formatado = $cobranca['responsavel_cpf'];
       if (strlen($cpf_formatado) == 11) {
-        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' . 
-                        substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
+        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' .
+          substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
       }
 
       // Determina o número da mensalidade baseado na competência ou posição
@@ -1020,7 +679,7 @@ public function index()
         // Tenta extrair o número da competência ou calcular baseado na data
         preg_match('/^(\d+)\//', $cobranca['competencia'], $matches);
         if (!empty($matches[1])) {
-          $mensalidade_num = (int)$matches[1];
+          $mensalidade_num = (int) $matches[1];
         }
       }
 
@@ -1054,7 +713,7 @@ public function index()
   {
     try {
       $db = db_connect();
-      
+
       // Recebe dados do formulário
       $cobranca_id = $this->request->getPost('cobranca_id');
       $aluno_id = $this->request->getPost('aluno_id');
@@ -1062,7 +721,7 @@ public function index()
       $responsavel_cpf = preg_replace('/\D/', '', $this->request->getPost('responsavel_cpf'));
       $aluno_nome = trim($this->request->getPost('aluno_nome'));
       $aluno_nome_adicional = trim($this->request->getPost('aluno_nome_adicional')) ?: null;
-      $mensalidade_numero = (int)$this->request->getPost('mensalidade_numero');
+      $mensalidade_numero = (int) $this->request->getPost('mensalidade_numero');
       $valor_str = $this->request->getPost('valor');
       $forma_pagamento = $this->request->getPost('forma_pagamento');
       $conferido_por = trim($this->request->getPost('conferido_por')) ?: null;
@@ -1102,8 +761,8 @@ public function index()
       // Formata CPF
       $cpf_formatado = $responsavel_cpf;
       if (strlen($cpf_formatado) == 11) {
-        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' . 
-                        substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
+        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' .
+          substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
       }
 
       // Prepara dados para inserção
@@ -1200,11 +859,11 @@ public function index()
     } catch (\Exception $e) {
       log_message('error', 'Erro ao gerar comprovante: ' . $e->getMessage());
       log_message('error', 'Trace: ' . $e->getTraceAsString());
-      
+
       if (isset($db) && $db->transStatus() !== false) {
         $db->transRollback();
       }
-      
+
       return $this->response->setJSON([
         "success" => false,
         "message" => "Erro ao gerar comprovante: " . $e->getMessage()
@@ -1219,7 +878,7 @@ public function index()
   {
     try {
       $db = db_connect();
-      
+
       $comprovante = $db->table('siamesa_comprovantes')
         ->where('id', $comprovante_id)
         ->where('deleted', 0)
@@ -1249,11 +908,11 @@ public function index()
 
       // Força download do arquivo
       $filename = 'Comprovante_SIAMESA_' . $comprovante['numero_comprovante'] . '.html';
-      
+
       $this->response->setHeader('Content-Type', 'text/html; charset=utf-8');
       $this->response->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"');
       $this->response->setBody($html);
-      
+
       return $this->response;
 
     } catch (\Exception $e) {
@@ -1311,7 +970,7 @@ public function index()
   {
     try {
       $db = db_connect();
-      
+
       $id = $this->request->getPost('id');
       $nome_unidade = trim($this->request->getPost('nome_unidade'));
       $cidade = trim($this->request->getPost('cidade'));
@@ -1339,13 +998,13 @@ public function index()
         $db->table('siamesa_unidades')
           ->where('id', $id)
           ->update($dados);
-        
+
         $mensagem = "Unidade atualizada com sucesso!";
       } else {
         // Novo cadastro
         $dados['deleted'] = 0;
         $db->table('siamesa_unidades')->insert($dados);
-        
+
         $mensagem = "Unidade cadastrada com sucesso!";
       }
 
@@ -1382,7 +1041,7 @@ public function index()
     try {
       $db = db_connect();
       $id = $this->request->getPost('id');
-      
+
       if (!$id) {
         return $this->response->setJSON([
           "success" => false,
@@ -1394,19 +1053,19 @@ public function index()
       $tem_alunos = $db->table('siamesa_alunos')
         ->where(['unidade_id' => $id, 'deleted' => 0])
         ->countAllResults();
-      
+
       if ($tem_alunos > 0) {
         return $this->response->setJSON([
           "success" => false,
           "message" => "Não é possível excluir esta unidade pois existem alunos vinculados a ela."
         ]);
       }
-      
+
       // Marca como deletado (soft delete)
       $db->table('siamesa_unidades')
         ->where('id', $id)
         ->update(['deleted' => 1]);
-      
+
       return $this->response->setJSON([
         "success" => true,
         "message" => "Unidade removida com sucesso!"
@@ -1428,7 +1087,7 @@ public function index()
   {
     try {
       $db = db_connect();
-      
+
       $comprovante = $db->table('siamesa_comprovantes')
         ->where('id', $comprovante_id)
         ->where('deleted', 0)
