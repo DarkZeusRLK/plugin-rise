@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3307
--- Tempo de geração: 12-Jan-2026 às 16:36
+-- Tempo de geração: 21-Jan-2026 às 01:43
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.2.12
 
@@ -62,7 +62,8 @@ INSERT INTO `rise_siamesa_alunos` (`id`, `unidade_id`, `responsavel_id`, `nome_a
 (55, 1, 57, 'Jose12/0111', '2026-01-07', '121313131', '55544236666', '08:30-11:00', NULL, 'P', 150.00, '2026-01-12', '2026-01-12', 'Ativo', 0, NULL),
 (56, 1, 58, 'Josezinho Junior Frank123', '2026-01-08', '12312313131', '11235567567', '11:30-14:00', NULL, 'P', 267.00, '2026-01-12', '2026-01-12', 'Ativo', 0, NULL),
 (57, 1, 59, 'Lucas Davi', '2015-10-20', '', '', '', NULL, '6', 237.00, '2026-01-12', '2025-02-05', 'Ativo', 0, NULL),
-(58, 1, 60, 'Miguel Oliveira', '2016-02-12', '', '', '', NULL, '8', 200.00, '2026-01-12', '2025-02-10', 'Ativo', 0, NULL);
+(58, 1, 60, 'Miguel Oliveira', '2016-02-12', '', '', '', NULL, '8', 200.00, '2026-01-12', '2025-02-10', 'Ativo', 0, NULL),
+(59, 1, 61, 'Junior kleber da silva', '2006-09-18', '123112-45', '007545334852', '08:30-11:00', NULL, '12', 150.00, '2026-01-20', '2026-01-20', 'Ativo', 0, NULL);
 
 --
 -- Índices para tabelas despejadas
@@ -83,7 +84,7 @@ ALTER TABLE `rise_siamesa_alunos`
 -- AUTO_INCREMENT de tabela `rise_siamesa_alunos`
 --
 ALTER TABLE `rise_siamesa_alunos`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=59;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=60;
 
 --
 -- Restrições para despejos de tabelas

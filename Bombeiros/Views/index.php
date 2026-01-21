@@ -96,8 +96,7 @@
                       <option value="14:30-17:00" <?= $aluno['turma'] == '14:30-17:00' ? 'selected' : ''; ?>>14:30–17:00</option>
                     </select>
                   </td>
-                  <td>
-                  </td>
+                  <td></td>
                   <td><input name="tamanho_camisa" value="<?= $aluno['tamanho_camisa']; ?>" class="form-control-excel input-tamanho"></td>
                   <td>
                     <select name="status" class="form-control-excel">
@@ -172,6 +171,24 @@
         </div>
 
         <div class="modal-body">
+
+          <div class="form-group mb-4" style="padding: 15px; border-radius: 6px; border: 1px dashed #4a90e2;">
+            <label style="font-weight: bold; color: #0d6efd; display:block; margin-bottom:5px;">
+              <i class="fa fa-magic"></i> Preenchimento Automático com IA
+            </label>
+            <div class="d-flex align-items-center">
+              <input type="file" id="arquivo_ia" name="arquivo_ia" class="form-control" accept="image/*,.pdf" style="margin-right: 10px;">
+              <button type="button" id="btn-processar-ia" class="btn btn-primary" onclick="lerFichaIA()">
+                <i class="fa fa-bolt"></i> Ler Ficha
+              </button>
+            </div>
+            <small class="text-muted d-block mt-1">Tire uma foto da ficha de matrícula ou suba o PDF preenchido.</small>
+
+            <div id="loading-ia" style="display:none; margin-top: 10px; color: #e67e22; font-weight:bold;">
+              <i class="fa fa-spinner fa-spin"></i> A IA está lendo o documento... Aguarde (5-10s)
+            </div>
+          </div>
+          <hr>
           <h5 class="text-primary border-bottom pb-2"><strong><i class="fa fa-user"></i> Dados do Responsável</strong></h5>
           <div class="row">
             <div class="col-md-6 mb-2">
@@ -266,6 +283,12 @@
                 <option value="M">M</option>
                 <option value="G">G</option>
                 <option value="GG">GG</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+                <option value="10">10</option>
+                <option value="12">12</option>
+                <option value="14">14</option>
+                <option value="16">16</option>
               </select>
             </div>
             <div class="col-md-4 mb-2">
@@ -309,7 +332,6 @@
   </div>
 </div>
 
-<!-- Modal para Cadastrar/Editar Unidade -->
 <div class="modal fade" id="modal-unidade" tabindex="-1" role="dialog">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
@@ -354,13 +376,12 @@
   </div>
 </div>
 
-<!-- Modal para Gerar Comprovante -->
 <div class="modal fade" id="modal-comprovante" tabindex="-1" role="dialog">
   <div class="modal-dialog modal-lg" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <h4 class="modal-title">Gerar Comprovante de Pagamento</h4>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        <button type="button" id="btn-salvar-comprovante" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="comprovante-cobranca-id">
@@ -443,6 +464,7 @@
     </div>
   </div>
 </div>
+
 <div class="modal fade" id="modal-importacao-siamesa" tabindex="-1" role="dialog">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
@@ -468,76 +490,35 @@
 </div>
 
 <style>
-  /* WRAPPER PRINCIPAL - GARANTE O ESCOPO */
+  /* ESTILOS GERAIS */
   .rise-siamesa-wrapper {
     --siamesa-text: var(--bs-body-color);
     --siamesa-border: var(--bs-border-color);
     --siamesa-accent-rgb: var(--bs-primary-rgb);
-
     color: var(--siamesa-text);
   }
 
-  /* RESET DE PAINÉIS E CARDS (Resolve o fundo branco da Image 5 e 6) */
   .rise-siamesa-wrapper .panel,
-  .rise-siamesa-wrapper .panel-body,
-  .rise-siamesa-wrapper .card,
-  .rise-siamesa-wrapper .card-body {
+  .rise-siamesa-wrapper .card {
     background-color: transparent !important;
-    border-color: var(--siamesa-border);
-    color: var(--siamesa-text);
     box-shadow: none !important;
+    border-color: var(--siamesa-border);
   }
 
-  /* RESET DE TABELAS (Neutraliza o Bootstrap 5 nativo da Image 4) */
+  /* TABELA TRANSPARENTE */
   .rise-siamesa-wrapper .table {
     --bs-table-bg: transparent;
-    /* Remove bloqueio de cor da Image 62d1a7 */
     --bs-table-color: inherit;
-    --bs-table-border-color: var(--siamesa-border);
-    --bs-table-hover-bg: rgba(var(--siamesa-accent-rgb), 0.05);
-    margin-bottom: 0;
     color: var(--siamesa-text);
   }
 
-  /* GARANTE QUE O TEXTO NÃO FIQUE PRETO (Image 4/6) */
   .rise-siamesa-wrapper .table th,
-  .rise-siamesa-wrapper .table td,
-  .rise-siamesa-wrapper strong,
-  .rise-siamesa-wrapper b,
-  .rise-siamesa-wrapper span:not(.badge) {
+  .rise-siamesa-wrapper .table td {
     color: inherit !important;
   }
 
-  /* CABEÇALHO DA TABELA */
-  .rise-siamesa-wrapper .table thead th {
-    background-color: transparent;
-    border-bottom: 2px solid var(--siamesa-border);
-    font-weight: 600;
-  }
-
-  /* LINHA DE DETALHE E SUB-NÍVEL (Image 6) */
-  .rise-siamesa-wrapper .bombeiros-detail-row {
-    background-color: rgba(var(--siamesa-accent-rgb), 0.03) !important;
-  }
-
-  .rise-siamesa-wrapper .detail-container {
-    padding: 15px 15px 15px 40px;
-    border-left: 3px solid var(--primary-color);
-    /* Cor do tema da Image 1 */
-    background-color: transparent;
-  }
-
-  select option {
-    background-color: #0b1020 !important;
-    /* Mesma cor escura do seu fundo */
-    color: #e5e7eb !important;
-    /* Garante que o texto fique claro */
-  }
-
-  /* INPUTS EDITÁVEIS (EXCEL STYLE) */
-  .rise-siamesa-wrapper .form-control-excel,
-  .rise-siamesa-wrapper .table td input:not([type="checkbox"]),
-  .rise-siamesa-wrapper .table td select {
+  /* INPUTS ESTILO EXCEL NA TABELA */
+  .rise-siamesa-wrapper .form-control-excel {
     background-color: transparent !important;
     border: 1px solid transparent;
     color: var(--siamesa-text) !important;
@@ -553,86 +534,116 @@
     background-color: var(--bs-body-bg) !important;
     border-color: var(--primary-color);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(var(--siamesa-accent-rgb), 0.2);
   }
 
-  /* INPUTS PADRÃO (FILTROS) */
-  .rise-siamesa-wrapper .form-control,
-  .rise-siamesa-wrapper .form-select {
-    border-color: var(--siamesa-border);
+  /* SELECTS DARK MODE FRIENDLY */
+  select option {
+    background-color: #0b1020 !important;
+    color: #e5e7eb !important;
   }
 
-  /* DESTAQUES DE LINHA */
-  .rise-siamesa-wrapper .linha-alterada {
-    background-color: rgba(var(--bs-warning-rgb), 0.1) !important;
-  }
-
-  .rise-siamesa-wrapper tr.total-row {
-    background-color: rgba(var(--bs-info-rgb), 0.1) !important;
-    font-weight: bold;
+  #unidade-status {
+    background-color: #0b1020 !important;
+    color: #e5e7eb !important;
+    border: 1px solid #374151;
   }
 
   /* UTILITÁRIOS */
-  .rise-siamesa-wrapper .text-off {
+  .text-off {
     opacity: 0.6;
-    color: var(--siamesa-text) !important;
   }
 
-  .rise-siamesa-wrapper .ml5 {
-    margin-left: 0.5rem;
+  input[type="file"]::file-selector-button {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    border: 1px solid #f7f7f8;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
   }
 
-  /* CORREÇÃO PARA BADGES */
-  .rise-siamesa-wrapper .badge {
-    color: #fff !important;
-    /* Badges mantêm contraste branco */
+  /* Suporte para navegadores baseados em WebKit (Chrome, Edge, Safari) */
+  input[type="file"]::-webkit-file-upload-button {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    border: 1px solid #ffffff;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
   }
 
-  /* Estiliza o campo de seleção de Status */
-  #unidade-status {
-    background-color: #0b1020 !important;
-    /* Fundo escuro */
-    color: #e5e7eb !important;
-    /* Texto claro */
-    border: 1px solid #374151;
-    /* Borda cinza escura para combinar */
+  /* Efeito ao passar o mouse (fica levemente mais claro ou escuro) */
+  input[type="file"]::file-selector-button:hover,
+  input[type="file"]::-webkit-file-upload-button:hover {
+    background-color: #232f52 !important;
+    /* Tom levemente diferente para feedback visual */
   }
 
-  /* Garante que a lista de opções, ao abrir, também seja escura */
-  #unidade-status option {
-    background-color: #0b1020 !important;
-    color: #e5e7eb !important;
+  /* 2. Caso você esteja usando a classe 'custom-file-label' do Bootstrap */
+  .custom-file-label::after {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    content: "Procurar";
+    /* Garante que o texto apareça */
+  }
+
+  /* 3. Caso seja um botão comum que abre o seletor (classe personalizada) */
+  .btn-upload-custom {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    border-color: #19223d !important;
+  }
+
+  select.form-control,
+  select.form-select {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    border: 1px solid #19223d;
+    background-image: none;
+    /* Remove seta padrão de alguns navegadores para evitar conflito de cor */
+  }
+
+  /* Garante que as opções ao abrir a lista também fiquem escuras */
+  select.form-control option,
+  select.form-select option {
+    background-color: #19223d;
+    color: #ffffff;
+  }
+
+  /* Se quiser estilizar a seta (apenas para navegadores modernos) */
+  select.form-control:focus,
+  select.form-select:focus {
+    background-color: #19223d !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 0 0.2rem rgba(25, 34, 61, 0.25);
   }
 </style>
 
 <script>
-  // Função para filtrar por unidade
+  // ==========================================
+  // FUNÇÕES DE NAVEGAÇÃO E CRUD
+  // ==========================================
+
   function filtrarPorUnidade() {
     var unidadeId = $('#filtro-unidade').val();
     var url = '<?php echo get_uri("bombeiros"); ?>';
-
     if (unidadeId && unidadeId != '') {
       url += '?unidade_id=' + unidadeId;
     }
-
     window.location.href = url;
   }
 
-  // Função para abrir modal de unidade
   function abrirModalUnidade(id) {
     $('#form-unidade')[0].reset();
     $('#unidade-id').val('');
     $('#modal-unidade .modal-title').text('Cadastrar Unidade');
 
     if (id) {
-      // Editar - buscar dados
       $.ajax({
         url: '<?php echo get_uri("bombeiros/buscar_unidade"); ?>',
         type: 'POST',
-        data: {
-          id: id,
-          '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
-        },
+        data: { id: id, '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>' },
         dataType: 'json',
         success: function (res) {
           if (res.success) {
@@ -652,11 +663,151 @@
     }
   }
 
-  // Salvar unidade
+  // ==========================================
+  // FUNÇÕES DA INTELIGÊNCIA ARTIFICIAL (IA)
+  // ==========================================
+
+  function lerFichaIA() {
+    var fileInput = document.getElementById('arquivo_ia');
+
+    if (fileInput.files.length === 0) {
+      alert("Por favor, selecione uma foto ou PDF da ficha primeiro.");
+      return;
+    }
+
+    // Mostra loading e bloqueia botão
+    $('#loading-ia').slideDown();
+    $('#btn-processar-ia').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Lendo...');
+
+    var formData = new FormData();
+    formData.append('arquivo_ia', fileInput.files[0]);
+    // Token de segurança do CodeIgniter (Obrigatório)
+    formData.append('<?php echo csrf_token(); ?>', '<?php echo csrf_hash(); ?>');
+
+    $.ajax({
+      url: '<?php echo get_uri("bombeiros/upload_e_ler_ia"); ?>',
+      type: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      success: function (response) {
+        // Restaura botões
+        $('#loading-ia').slideUp();
+        $('#btn-processar-ia').prop('disabled', false).html('<i class="fa fa-bolt"></i> Ler Ficha');
+
+        // Tenta parsear se vier string (segurança extra)
+        if (typeof response === 'string') {
+          try { response = JSON.parse(response); } catch (e) { }
+        }
+
+        if (response.success) {
+          appAlert.success("Dados extraídos com sucesso!");
+          preencherCamposIA(response.data);
+        } else {
+          appAlert.error(response.message || "Erro ao ler o arquivo.");
+          console.error(response);
+        }
+      },
+      error: function (jqXHR, textStatus, errorThrown) {
+        $('#loading-ia').slideUp();
+        $('#btn-processar-ia').prop('disabled', false).html('<i class="fa fa-bolt"></i> Ler Ficha');
+        appAlert.error("Erro de conexão com o servidor.");
+      }
+    });
+  }
+
+  function preencherCamposIA(data) {
+    // Helper para preencher apenas se o dado existir
+    const setVal = (id, valor) => {
+      if (valor && valor !== "null") $(id).val(valor).trigger('change');
+    };
+
+    // --- DADOS DO RESPONSÁVEL ---
+    setVal('#resp_nome', data.responsavel_nome);
+    setVal('#resp_nasc', data.responsavel_nascimento);
+    setVal('#resp_rg', data.responsavel_rg);
+    setVal('#resp_cpf', data.responsavel_cpf);
+    setVal('#resp_email', data.responsavel_email);
+    setVal('#resp_whats', data.responsavel_whats);
+    setVal('#resp_celular', data.responsavel_celular);
+    setVal('#resp_recado', data.responsavel_recado);
+
+    // Endereço
+    setVal('#resp_cep', data.responsavel_cep);
+    setVal('#resp_endereco', data.responsavel_endereco);
+    setVal('#resp_numero', data.responsavel_numero);
+    setVal('#resp_bairro', data.responsavel_bairro);
+    setVal('#resp_cidade', data.responsavel_cidade);
+    setVal('#resp_complemento', data.responsavel_complemento);
+
+    // --- DADOS DO ALUNO ---
+    setVal('#nome_aluno', data.nome_aluno);
+    setVal('#cpf_aluno', data.cpf_aluno);
+    setVal('#rg_aluno', data.rg_aluno);
+    setVal('#nasc_aluno', data.nascimento_aluno);
+
+    // --- SELECTS ESPECIAIS ---
+
+    // Tamanho da Camisa
+    if (data.tamanho_camisa) {
+      let tam = data.tamanho_camisa.toString().trim().toUpperCase();
+      $('#tamanho_camisa').val(tam);
+    }
+
+    // Horário (Turma)
+    if (data.horario) {
+      let horarioIA = data.horario.toString();
+      // Procura no texto das options se contém o que a IA mandou
+      $("#horario option").each(function () {
+        if ($(this).text().includes(horarioIA) || $(this).val().includes(horarioIA)) {
+          $(this).prop("selected", true);
+        }
+      });
+    }
+
+    if (typeof aplicarMascaras === 'function') aplicarMascaras();
+  }
+
+  // ==========================================
+  // SETUP E EVENT LISTENERS
+  // ==========================================
+
   $(document).ready(function () {
+    aplicarMascaras();
+
+    // Carrega as abas quando são clicadas
+    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+      var target = $(e.target).attr("href");
+      var htmlContent = '';
+
+      // Carrega Responsáveis
+      if (target === '#tab-responsaveis') {
+        htmlContent = $('#area-responsaveis').html();
+        if (htmlContent.indexOf('Carregando responsáveis') !== -1) {
+          $('#area-responsaveis').load('<?php echo get_uri("bombeiros/lista_responsaveis"); ?>');
+        }
+      }
+
+      // Carrega Pagamentos
+      if (target === '#tab-pagamentos') {
+        htmlContent = $('#area-pagamentos').html();
+        if (htmlContent.indexOf('Carregando financeiro') !== -1) {
+          $('#area-pagamentos').load('<?php echo get_uri("bombeiros/lista_pagamentos"); ?>');
+        }
+      }
+
+      // Carrega Financeiro Resumo
+      if (target === '#tab-financeiro-geral') {
+        htmlContent = $('#area-financeiro-geral').html();
+        if (htmlContent.indexOf('Gerando relatórios') !== -1) {
+          $('#area-financeiro-geral').load('<?php echo get_uri("bombeiros/financeiro_resumo"); ?>');
+        }
+      }
+    });
+
+    // Submit Form Unidade
     $('#form-unidade').on('submit', function (e) {
       e.preventDefault();
-
       var btn = $(this).find('button[type="submit"]');
       var textoOriginal = btn.html();
       btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Salvando...');
@@ -676,225 +827,185 @@
             btn.prop('disabled', false).html(textoOriginal);
           }
         },
-        error: function (xhr, status, error) {
-          console.error("Erro ao salvar unidade:", error);
-          appAlert.error("Erro ao salvar unidade. Tente novamente.");
+        error: function () {
+          appAlert.error("Erro interno.");
           btn.prop('disabled', false).html(textoOriginal);
         }
       });
     });
-  });
-  $('#form-importar-excel').on('submit', function (e) {
-    e.preventDefault();
-    var formData = new FormData(this);
-    formData.append('<?php echo csrf_token(); ?>', '<?php echo csrf_hash(); ?>');
 
-    var btn = $(this).find('button[type="submit"]');
-    btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importando...');
-
-    $.ajax({
-      url: '<?php echo get_uri("bombeiros/importar_csv"); ?>',
-      type: 'POST',
-      data: formData,
-      cache: false,
-      contentType: false,
-      processData: false,
-      dataType: 'json',
-      success: function (res) {
-        if (res.success) {
-          appAlert.success(res.message);
-          location.reload();
-        } else {
-          appAlert.error(res.message);
-          btn.prop('disabled', false).html('Processar Importação');
-        }
-      },
-      error: function () {
-        appAlert.error("Erro interno no servidor ao processar arquivo.");
-        btn.prop('disabled', false).html('Processar Importação');
-      }
-    });
-  });
-  function aplicarMascaras() {
-    $('.mask-cpf').mask('000.000.000-00', { reverse: true });
-    var SPMaskBehavior = function (val) { return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009'; },
-      spOptions = { onKeyPress: function (val, e, field, options) { field.mask(SPMaskBehavior.apply({}, arguments), options); } };
-    $('.mask-tel, .mask-cel').mask(SPMaskBehavior, spOptions);
-    // Máscara de moeda brasileira
-    $('.mask-money').mask('#.##0,00', { reverse: true });
-  }
-
-  window.abrirModalNovoAluno = function () {
-    $("#form-siamesa-aluno")[0].reset();
-    $("#aluno_id").val("");
-    $("#modal-titulo").text("Novo Cadastro - SIAMESA");
-    $("#div_status").hide();
-    $("#modal-aluno").modal("show");
-    setTimeout(aplicarMascaras, 500);
-  };
-
-  window.abrirModalImportar = function () { $("#modal-importacao-siamesa").modal("show"); };
-
-  // Função para carregar dados no modal para EDIÇÃO
-  window.editarAluno = function (aluno) {
-    $("#form-siamesa-aluno")[0].reset();
-    $("#aluno_id").val(aluno.id);
-    $("#modal-titulo").text("Editar Aluno: " + aluno.nome_aluno);
-
-    // Preenchimento dos campos
-    $("#resp_nome").val(aluno.responsavel_nome);
-    $("#resp_cpf").val(aluno.responsavel_cpf);
-    $("#resp_whats").val(aluno.responsavel_whats);
-    $("#resp_email").val(aluno.responsavel_email);
-
-    $("#nome_aluno").val(aluno.nome_aluno);
-    $("#nasc_aluno").val(aluno.nascimento_aluno);
-    $("#tamanho_camisa").val(aluno.tamanho_camisa);
-
-    $("#unidade_id").val(aluno.unidade_id);
-    $("#horario").val(aluno.turma);
-    $("#data_inicio").val(aluno.data_inicio);
-
-    // Formata valor para a máscara
-    let valor = parseFloat(aluno.valor_mensalidade).toFixed(2).replace('.', ',');
-    $("#valor_mensalidade").val(valor);
-
-    // Exibe status apenas na edição
-    $("#div_status").show();
-    $("#status_aluno").val(aluno.status);
-
-    $("#modal-aluno").modal("show");
-    setTimeout(aplicarMascaras, 500);
-  };
-
-  function confirmarAcao(titulo, mensagem, callback) {
-    $("#confirm-title").text(titulo);
-    $("#confirm-body").text(mensagem);
-    $("#modal-confirmacao-siamesa").modal("show");
-
-    $("#confirm-btn-ok").off("click").on("click", function () {
-      $("#modal-confirmacao-siamesa").modal("hide");
-      callback();
-    });
-  }
-
-  $(document).ready(function () {
-    aplicarMascaras();
-
-    // REMOVIDO: Lógica do checkbox 'comprar_camiseta_check' (Camiseta agora é obrigatória)
-
-    $('a[href="#tab-responsaveis"]').on('shown.bs.tab', carregarResponsaveis);
-    $('a[href="#tab-pagamentos"]').on('shown.bs.tab', carregarPagamentos);
-    $('a[href="#tab-financeiro-geral"]').on('shown.bs.tab', carregarRelatorioFinanceiro);
-    $('#data-chamada, #filtro-turma-chamada').on('change', carregarListaChamada);
-
-    // Barra de busca de alunos
-    $('#busca-alunos').on('keyup', function () {
-      var value = $(this).val().toLowerCase();
-      $('#lista-alunos-body tr').filter(function () {
-        var texto = $(this).text().toLowerCase();
-        $(this).toggle(texto.indexOf(value) > -1);
-      });
-    });
-
-    $(document).on('change input', '.form-control-excel', function () {
-      $(this).closest('tr').addClass('linha-alterada');
-      $('#btn-salvar-geral').fadeIn();
-    });
-
-    // Formulário de salvar/editar aluno
-    $("#form-siamesa-aluno").on("submit", function (e) {
+    // Submit Form Aluno (Novo ou Edição)
+    $("#form-siamesa-aluno").submit(function (e) {
       e.preventDefault();
-
       var btn = $(this).find('button[type="submit"]');
-      var textoOriginal = btn.html();
-      btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Salvando...');
+      btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Processando...');
 
       $.ajax({
         url: '<?php echo get_uri("bombeiros/salvar"); ?>',
         type: 'POST',
         data: $(this).serialize(),
         dataType: 'json',
-        success: function (res) {
-          if (res.success) {
-            appAlert.success(res.message || "Dados salvos com sucesso!");
+        success: function (result) {
+          if (result.success) {
+            appAlert.success(result.message);
+            $("#modal-aluno").modal("hide");
             location.reload();
           } else {
-            appAlert.error(res.message || "Erro ao salvar.");
-            btn.prop('disabled', false).html(textoOriginal);
+            appAlert.error(result.message);
+            btn.prop("disabled", false).html('<i class="fa fa-save"></i> Finalizar Matrícula');
           }
         },
-        error: function (xhr, status, error) {
-          console.error("Resposta do servidor:", xhr.responseText);
-          appAlert.error("Erro no servidor. Verifique o console.");
-          btn.prop('disabled', false).html(textoOriginal);
+        error: function () {
+          appAlert.error("Erro de comunicação.");
+          btn.prop("disabled", false).html('<i class="fa fa-save"></i> Finalizar Matrícula');
         }
       });
     });
 
-    // --- Lógica de Tema (Mantida) ---
-    function limparEstilosInline() {
-      var wrapper = $('.rise-siamesa-wrapper');
-      if (wrapper.length) {
-        wrapper.find('[style*="background-color"], [style*="color"]').each(function () {
-          var $el = $(this);
-          var style = $el.attr('style') || '';
-          style = style.replace(/background-color\s*:\s*[^;]+;?/gi, '').replace(/color\s*:\s*[^;]+;?/gi, '');
-          style.trim() ? $el.attr('style', style.trim()) : $el.removeAttr('style');
-        });
+    // Carregar lista de chamada quando turma é selecionada
+    $('#filtro-turma-chamada').on('change', function () {
+      var turma = $(this).val();
+      var data = $('#data-chamada').val();
+
+      if (!turma) {
+        $('#area-chamada').html('<p class="text-off">Selecione a turma para carregar a lista de chamada.</p>');
+        return;
       }
-    }
-    $(document).on("themeChange theme-changed risethemechange", function () { setTimeout(limparEstilosInline, 100); });
-    limparEstilosInline();
+
+      if (!data) {
+        appAlert.error("Selecione uma data primeiro.");
+        return;
+      }
+
+      $('#area-chamada').html('<p class="text-center"><i class="fa fa-spinner fa-spin"></i> Carregando lista de chamada...</p>');
+
+      $.ajax({
+        url: '<?php echo get_uri("bombeiros/lista_chamada"); ?>',
+        type: 'POST',
+        data: {
+          data: data,
+          turma: turma,
+          '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
+        },
+        success: function (html) {
+          $('#area-chamada').html(html);
+        },
+        error: function () {
+          appAlert.error("Erro ao carregar lista de chamada.");
+          $('#area-chamada').html('<p class="text-off">Erro ao carregar.</p>');
+        }
+      });
+    });
+
+    // Submit Importação
+    $('#form-importar-excel').on('submit', function (e) {
+      e.preventDefault();
+      var formData = new FormData(this);
+      formData.append('<?php echo csrf_token(); ?>', '<?php echo csrf_hash(); ?>');
+
+      var btn = $(this).find('button[type="submit"]');
+      btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Importando...');
+
+      $.ajax({
+        url: '<?php echo get_uri("bombeiros/importar_csv"); ?>',
+        type: 'POST',
+        data: formData,
+        cache: false,
+        contentType: false,
+        processData: false,
+        dataType: 'json',
+        success: function (res) {
+          if (res.success) {
+            appAlert.success(res.message);
+            location.reload();
+          } else {
+            appAlert.error(res.message);
+            btn.prop('disabled', false).html('Processar Importação');
+          }
+        },
+        error: function () {
+          appAlert.error("Erro interno no servidor.");
+          btn.prop('disabled', false).html('Processar Importação');
+        }
+      });
+    });
   });
 
-  // --- Funções de Carga de Dados (Mantidas) ---
-  function carregarListaChamada() { /* ... */ }
-  function salvarChamada() { /* ... */ }
-  function carregarResponsaveis() { /* ... AJAX lista_responsaveis ... */ }
-  function carregarPagamentos() { /* ... AJAX lista_pagamentos ... */ }
-  function carregarRelatorioFinanceiro() { /* ... AJAX financeiro_resumo ... */ }
+  function aplicarMascaras() {
+    $('.mask-cpf').mask('000.000.000-00', { reverse: true });
+    var SPMaskBehavior = function (val) { return val.replace(/\D/g, '').length === 11 ? '(00) 00000-0000' : '(00) 0000-00009'; },
+      spOptions = { onKeyPress: function (val, e, field, options) { field.mask(SPMaskBehavior.apply({}, arguments), options); } };
+    $('.mask-tel, .mask-cel').mask(SPMaskBehavior, spOptions);
+    $('.mask-money').mask('#.##0,00', { reverse: true });
+    $('.mask-cep').mask('00000-000');
+  }
 
-  function salvarAlteracoes() {
-    // Esta função lida com a edição rápida na tabela (estilo Excel)
-    let promises = [];
-    let hasChanges = false;
+  window.abrirModalNovoAluno = function () {
+    $("#form-siamesa-aluno")[0].reset();
+    $("#aluno_id").val("");
+    $("#modal-titulo").text("Novo Cadastro - SIAMESA");
+    $("#modal-aluno").modal("show");
+  }
 
-    $('.linha-alterada').each(function () {
-      let row = $(this);
-      let data = {
-        id: row.data('id'),
-        nome_aluno: row.find('[name="nome_aluno"]').val(),
-        responsavel_nome: row.find('[name="responsavel_nome"]').val(),
-        responsavel_whats: row.find('[name="responsavel_whats"]').val(),
-        horario: row.find('[name="horario"]').val(),
-        tamanho_camisa: row.find('[name="tamanho_camisa"]').val(),
-        status: row.find('[name="status"]').val(),
+  window.abrirModalImportar = function () {
+    $('#modal-importacao-siamesa').modal('show');
+  }
+
+  // Função para deletar aluno
+  window.confirmarExclusao = function (id, btn) {
+    if (confirm("Tem certeza que deseja excluir este aluno?")) {
+      $.post('<?php echo get_uri("bombeiros/deletar"); ?>', { id: id, '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>' }, function (res) {
+        if (res.success) {
+          $(btn).closest('tr').fadeOut();
+        } else {
+          appAlert.error("Erro ao excluir.");
+        }
+      }, 'json');
+    }
+  }
+
+  // Função para salvar chamada
+  window.salvarChamada = function () {
+    var data = $('#data-chamada').val();
+    var turma = $('#filtro-turma-chamada').val();
+
+    if (!data || !turma) {
+      appAlert.error("Selecione a data e a turma primeiro.");
+      return;
+    }
+
+    var presencas = {};
+    $('#area-chamada input[type="radio"]:checked').each(function () {
+      var name = $(this).attr('name');
+      var aluno_id = name.replace('p_', '');
+      var status = $(this).val();
+      presencas[aluno_id] = status;
+    });
+
+    if (Object.keys(presencas).length === 0) {
+      appAlert.error("Nenhuma presença selecionada.");
+      return;
+    }
+
+    $.ajax({
+      url: '<?php echo get_uri("bombeiros/salvar_presenca"); ?>',
+      type: 'POST',
+      data: {
+        data_aula: data,
+        presencas: presencas,
         '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>'
-      };
-
-      hasChanges = true;
-      promises.push($.ajax({ url: '<?php echo get_uri("bombeiros/salvar"); ?>', type: 'POST', data: data, dataType: 'json' }));
-    });
-
-    if (!hasChanges) return appAlert.info("Nenhuma alteração.");
-
-    Promise.all(promises).then(function () {
-      appAlert.success("Atualizado!");
-      location.reload();
-    }).catch(function (err) { appAlert.error("Erro ao salvar lote."); });
-  }
-
-  function confirmarExclusao(id, btn) {
-    confirmarAcao("Excluir Aluno", "Deseja apagar permanentemente?", function () {
-      $.post('<?php echo get_uri("bombeiros/deletar"); ?>', { id: id, '<?php echo csrf_token(); ?>': '<?php echo csrf_hash(); ?>' },
-        function (res) { res.success ? $(btn).closest('tr').fadeOut() : appAlert.error("Erro."); }, 'json');
+      },
+      dataType: 'json',
+      success: function (res) {
+        if (res.success) {
+          appAlert.success(res.message);
+        } else {
+          appAlert.error(res.message || "Erro ao salvar chamada.");
+        }
+      },
+      error: function () {
+        appAlert.error("Erro de conexão.");
+      }
     });
   }
-
-  // Funções de Pagamento e Comprovante (Mantidas conforme seu original)
-  function toggleParcelas(alunoId) { /* ... */ }
-  function marcarComoPago(idPagamento) { /* ... */ }
-  function gerarComprovante(cobrancaId, alunoId) { /* ... */ }
-  function salvarEgerarComprovante() { /* ... */ }
 </script>

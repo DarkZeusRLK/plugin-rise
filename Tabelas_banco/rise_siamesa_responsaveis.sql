@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3307
--- Tempo de geração: 12-Jan-2026 às 16:36
+-- Tempo de geração: 21-Jan-2026 às 01:43
 -- Versão do servidor: 10.4.32-MariaDB
 -- versão do PHP: 8.2.12
 
@@ -60,7 +60,8 @@ INSERT INTO `rise_siamesa_responsaveis` (`id`, `nome`, `nascimento`, `rg`, `cpf`
 (57, 'Jose12/01', NULL, '1313123313', '34213123123', NULL, NULL, NULL, NULL, NULL, NULL, '31333333333', NULL, NULL, 'fernandes@gmail.com', '', 0),
 (58, 'Josezinho Frank123', '2021-12-30', '904993311', '15678888888', 'Rua dos alfineiros', '123', 'Apto 01', 'centro', '86870000', 'Curitiba', '43111111112', '21233333333', '5132313131313131', 'josezinho@gmail.com', '', 0),
 (59, 'Thiago Frank', '1985-05-10', '123456789', '11122233344', 'Rua Exemplo', '100', 'Apto 10', 'Centro', '80000000', 'Curitiba', '41999998888', '4133334444', NULL, 'thiago@email.com', 'Ativo', 0),
-(60, 'Natalia Oliveira', '1990-08-15', '987654321', '99988877766', 'Av Brasil', '500', '', 'Batel', '81000000', 'Curitiba', '41988887777', '', NULL, 'natalia@email.com', 'Ativo', 0);
+(60, 'Natalia Oliveira', '1990-08-15', '987654321', '99988877766', 'Av Brasil', '500', '', 'Batel', '81000000', 'Curitiba', '41988887777', '', NULL, 'natalia@email.com', 'Ativo', 0),
+(61, 'João Kleber', '2007-09-18', '123123-41', '11443487715', 'Rua dos alfredos', '115', 'Apto 01', 'Centro', '86870000', 'Ivaiporã', '43999791433', '', '', 'fernandesjoaopedro622@gmail.com', '', 0);
 
 --
 -- Índices para tabelas despejadas
@@ -82,7 +83,7 @@ ALTER TABLE `rise_siamesa_responsaveis`
 -- AUTO_INCREMENT de tabela `rise_siamesa_responsaveis`
 --
 ALTER TABLE `rise_siamesa_responsaveis`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=61;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=62;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

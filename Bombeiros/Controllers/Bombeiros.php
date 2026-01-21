@@ -7,73 +7,301 @@ use App\Controllers\Security_Controller;
 class Bombeiros extends Security_Controller
 {
   /**
-   * Helper para renderização de views
+   * Construtor
    */
+  public function __construct()
+  {
+    parent::__construct();
+    // CORREÇÃO: No CodeIgniter 4 usamos a função model() e não $this->load
+    $this->General_files_model = model("App\Models\General_files_model");
+  }
+  private function get_api_key()
+  {
+    // Tenta pegar do .env (CodeIgniter 4 usa getenv ou env())
+    $key = getenv('GEMINI_API_KEY');
+
+    // Fallback: Se getenv falhar, tenta $_ENV (alguns servidores precisam disso)
+    if (!$key && isset($_ENV['GEMINI_API_KEY'])) {
+      $key = $_ENV['GEMINI_API_KEY'];
+    }
+
+    if (empty($key)) {
+      log_message('error', 'CRÍTICO: Chave da API não encontrada no arquivo .env');
+      throw new \Exception('Configuração de API ausente no servidor.');
+    }
+
+    return $key;
+  }
+  public function upload_e_ler_ia()
+  {
+    $this->carregar_env_plugin();
+
+    if (!empty($_FILES['arquivo_ia']['name'])) {
+      $file = $this->request->getFile('arquivo_ia');
+
+      if ($file->isValid() && !$file->hasMoved()) {
+        $path = getcwd() . '/files/';
+        $newName = $file->getRandomName();
+        $file->move($path, $newName);
+        $fullPath = $path . $newName;
+        $db = db_connect();
+        $data_file = [
+          'file_name' => $newName,
+          'file_size' => $file->getSize(),
+          'created_at' => date('Y-m-d H:i:s'),
+          'uploaded_by' => $this->login_user->id ?? 1,
+          'context' => 'bombeiros_ia',
+          'context_id' => 0
+        ];
+        $db->table('general_files')->insert($data_file);
+        $file_id = $db->insertID();
+
+        // (Pode usar DOCX ou PDF para extrair as informações)
+        $ext = strtolower(pathinfo($newName, PATHINFO_EXTENSION));
+
+        if ($ext === 'docx') {
+          $textoWord = $this->readDocx($fullPath);
+
+          if (!$textoWord || strpos($textoWord, 'Erro') !== false) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Erro ao ler DOCX: ' . $textoWord]);
+          }
+          return $this->analisar_texto_com_gemini($textoWord);
+        } else {
+          return $this->extrair_com_gemini($file_id);
+        }
+      }
+    }
+
+    return $this->response->setJSON(['success' => false, 'message' => 'Nenhum arquivo enviado.']);
+  }
+  private function analisar_texto_com_gemini($texto)
+  {
+    try {
+      $api_key = $this->get_api_key();
+    } catch (\Exception $e) {
+      return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+    }
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" . $api_key;
+
+    $prompt_text = "Você é um assistente. Analise o texto da ficha de matrícula.
+      Retorne APENAS um JSON válido.
+      REGRAS DE FORMATAÇÃO:
+      1. Datas: Use SEMPRE o formato 'AAAA-MM-DD'.
+      2. Horário: Retorne apenas a hora.
+      3. Unidade: Identifique a cidade ou unidade citada.
+      Campos JSON:
+      responsavel_nome, responsavel_nascimento, responsavel_rg, responsavel_cpf,
+      responsavel_endereco, responsavel_numero, responsavel_complemento, responsavel_bairro,
+      responsavel_cep, responsavel_cidade, responsavel_whats, responsavel_celular,
+      responsavel_recado, responsavel_email, nome_aluno, nascimento_aluno, rg_aluno,
+      cpf_aluno, horario, tamanho_camisa, unidade.
+      TEXTO DA FICHA: " . substr($texto, 0, 15000);
+
+    $payload = [
+      "contents" => [["parts" => [["text" => $prompt_text]]]],
+      "generationConfig" => ["response_mime_type" => "application/json"]
+    ];
+
+    $resposta_json = $this->executar_curl_gemini($url, $payload);
+    return $this->formatar_resposta_para_frontend($resposta_json);
+  }
+  public function extrair_com_gemini($file_id)
+  {
+    try {
+      $api_key = $this->get_api_key();
+    } catch (\Exception $e) {
+      return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
+    }
+
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" . $api_key;
+
+    $file_info = $this->General_files_model->get_one($file_id);
+    if (!$file_info)
+      return $this->response->setJSON(['success' => false, 'message' => 'Arquivo não encontrado.']);
+
+
+    $path = getcwd() . '/files/' . $file_info->file_name;
+    if (!file_exists($path))
+      $path = getcwd() . '/files/timeline_files/' . $file_info->file_name;
+    if (!file_exists($path))
+      return $this->response->setJSON(['success' => false, 'message' => 'Arquivo físico sumiu.']);
+
+    $mime_type = mime_content_type($path);
+    $base64_data = base64_encode(file_get_contents($path));
+
+    $prompt_text = "Você é um assistente administrativo. Analise esta imagem de matrícula.
+       Retorne APENAS um JSON válido.
+       REGRAS DE FORMATAÇÃO:
+       1. Datas: Use SEMPRE o formato 'AAAA-MM-DD' (Ex: 2014-05-20).
+       2. Horário: Retorne apenas a hora (Ex: '08:30', '13:30').
+       3. Unidade: Copie exatamente o nome da cidade ou unidade escrita na ficha.
+       Campos JSON:
+       responsavel_nome, responsavel_nascimento, responsavel_rg, responsavel_cpf,
+       responsavel_endereco, responsavel_numero, responsavel_complemento, responsavel_bairro,
+       responsavel_cep, responsavel_cidade, responsavel_whats, responsavel_celular,
+       responsavel_recado, responsavel_email, nome_aluno, nascimento_aluno, rg_aluno,
+       cpf_aluno, horario, tamanho_camisa, unidade.";
+
+    $payload = [
+      "contents" => [
+        [
+          "parts" => [
+            ["text" => $prompt_text],
+            ["inline_data" => ["mime_type" => $mime_type, "data" => $base64_data]]
+          ]
+        ]
+      ],
+      "generationConfig" => ["response_mime_type" => "application/json"]
+    ];
+
+    $resposta_json = $this->executar_curl_gemini($url, $payload);
+    return $this->formatar_resposta_para_frontend($resposta_json);
+  }
+  private function formatar_resposta_para_frontend($json_response)
+  {
+    $body = $json_response->getBody();
+    $data = json_decode($body, true);
+
+    if (!isset($data['success']) || $data['success'] === false) {
+      return $json_response;
+    }
+
+
+    $dados_ia = $data['data'];
+
+
+    $campos_data = ['nascimento_aluno', 'responsavel_nascimento'];
+
+    foreach ($campos_data as $campo) {
+      if (!empty($dados_ia[$campo])) {
+        // Tenta converter qualquer formato (20/05/2010 ou 20-05-2010) para Y-m-d
+        $timestamp = strtotime(str_replace('/', '-', $dados_ia[$campo]));
+        if ($timestamp) {
+          $dados_ia[$campo] = date('Y-m-d', $timestamp);
+        }
+      }
+    }
+
+
+    // $dados_ia['responsavel_celular'] = preg_replace('/[^0-9]/', '', $dados_ia['responsavel_celular']);
+
+    // Atualiza o JSON final
+    return $this->response->setJSON([
+      'success' => true,
+      'data' => $dados_ia
+    ]);
+  }
+  private function executar_curl_gemini($url, $payload)
+  {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+
+    $response = curl_exec($ch);
+
+    if (curl_errno($ch)) {
+      $erro = curl_error($ch);
+      curl_close($ch);
+      return $this->response->setJSON(['success' => false, 'message' => 'Erro cURL: ' . $erro]);
+    }
+    curl_close($ch);
+
+    $json_response = json_decode($response, true);
+
+    if (isset($json_response['candidates'][0]['content']['parts'][0]['text'])) {
+      $raw_text = $json_response['candidates'][0]['content']['parts'][0]['text'];
+      $clean_json = str_replace(['```json', '```'], '', $raw_text);
+      $dados = json_decode($clean_json, true);
+
+      if ($dados)
+        return $this->response->setJSON(['success' => true, 'data' => $dados]);
+      return $this->response->setJSON(['success' => false, 'message' => 'JSON inválido.', 'raw' => $raw_text]);
+    }
+
+    return $this->response->setJSON(['success' => false, 'message' => 'Erro IA.', 'debug' => $json_response]);
+  }
+
+  private function carregar_env_plugin()
+  {
+    // Caminho relativo: 
+    // __DIR__ é .../plugins/Bombeiros/Controllers
+    // Subindo um nível (../) chegamos em .../plugins/Bombeiros/.env
+    $path = __DIR__ . '/../.env';
+
+    if (file_exists($path)) {
+      $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+      foreach ($lines as $line) {
+        // Ignora comentários
+        if (strpos(trim($line), '#') === 0)
+          continue;
+
+        if (strpos($line, '=') !== false) {
+          list($name, $value) = explode('=', $line, 2);
+          $name = trim($name);
+          $value = trim($value);
+
+          // Remove aspas extras se houver
+          $value = trim($value, '"\'');
+
+          // Força o carregamento
+          putenv(sprintf('%s=%s', $name, $value));
+          $_ENV[$name] = $value;
+          $_SERVER[$name] = $value;
+        }
+      }
+    } else {
+      // Grava no log do CodeIgniter (writable/logs) se não achar
+      log_message('error', 'Arquivo .env do plugin NÃO encontrado em: ' . $path);
+    }
+  }
+
   private function render_view($path, $data = [])
   {
     $path = str_replace('\\', '/', $path);
     return view($path, $data);
   }
 
-  /**
-   * Helper para obter erro do MySQL diretamente
-   */
+  // Mantive sua função auxiliar de erro
   private function getMysqlError($db)
   {
     try {
-      // Tenta acessar via reflexão primeiro
       $reflection = new \ReflectionClass($db);
       if ($reflection->hasProperty('connID')) {
         $prop = $reflection->getProperty('connID');
         $prop->setAccessible(true);
         $connID = $prop->getValue($db);
-        if ($connID && is_object($connID)) {
-          if (isset($connID->error) && !empty($connID->error)) {
-            return $connID->error . ' (Código: ' . ($connID->errno ?? 'N/A') . ')';
-          }
+        if ($connID && is_object($connID) && isset($connID->error) && !empty($connID->error)) {
+          return $connID->error . ' (Código: ' . ($connID->errno ?? 'N/A') . ')';
         }
       }
-
-      // Tenta método getError() se existir
       if (method_exists($db, 'getError')) {
         $error = $db->getError();
-        if (!empty($error)) {
+        if (!empty($error))
           return is_array($error) ? ($error['message'] ?? json_encode($error)) : $error;
-        }
       }
-
-      // Tenta error() do CodeIgniter
       $error = $db->error();
-      if (!empty($error['message'])) {
+      if (!empty($error['message']))
         return $error['message'];
-      }
-      if (!empty($error['code'])) {
-        return 'Erro SQL código ' . $error['code'];
-      }
     } catch (\Exception $e) {
-      // Se não conseguir acessar, tenta error() do CodeIgniter como fallback
       $error = $db->error();
-      if (!empty($error['message'])) {
+      if (!empty($error['message']))
         return $error['message'];
-      }
     }
     return 'N/A';
   }
 
-  /**
-   * Tela principal: Listagem de Matrículas
-   */
   public function index()
   {
     $db = db_connect();
-
-    // Busca unidades para o filtro
     $view_data['unidades'] = $db->table('siamesa_unidades')
       ->where(['status' => 'Ativo', 'deleted' => 0])
       ->orderBy('nome_unidade', 'ASC')
       ->get()->getResultArray();
 
-    // Filtro de unidade (se fornecido)
     $unidade_id = $this->request->getGet('unidade_id');
 
     $query = $db->table('siamesa_alunos a')
@@ -82,27 +310,17 @@ class Bombeiros extends Security_Controller
       ->join('siamesa_unidades u', 'u.id = a.unidade_id', 'left')
       ->where('a.deleted', 0);
 
-    // Aplica filtro de unidade se fornecido
     if ($unidade_id && $unidade_id != '') {
       $query->where('a.unidade_id', $unidade_id);
     }
 
     $view_data['alunos'] = $query->get()->getResultArray();
     $view_data['unidade_selecionada'] = $unidade_id;
-
-    $view_data['total_ativos'] = $db->table('siamesa_alunos')
-      ->where(['status' => 'Ativo', 'deleted' => 0])
-      ->countAllResults();
+    $view_data['total_ativos'] = $db->table('siamesa_alunos')->where(['status' => 'Ativo', 'deleted' => 0])->countAllResults();
 
     return $this->template->render("Bombeiros\Views\index", $view_data);
   }
 
-  /**
-   * Salva ou Atualiza Aluno e Responsável
-   */
-  /**
-   * Salva ou Atualiza Aluno e Responsável
-   */
   public function salvar()
   {
     $db = db_connect();
@@ -124,7 +342,6 @@ class Bombeiros extends Security_Controller
       $id = $this->request->getPost('id');
       $num_parcelas = $this->request->getPost('num_parcelas') ?: 6;
 
-      // Tratamento Valor Mensalidade
       $valor_post = $this->request->getPost('valor_mensalidade');
       $valor_mensalidade = 150.00;
       if ($valor_post) {
@@ -137,7 +354,7 @@ class Bombeiros extends Security_Controller
       $data_inicio = $converterData($this->request->getPost('data_inicio')) ?: date('Y-m-d');
       $tamanho_camisa = $this->request->getPost('tamanho_camisa');
 
-      // --- PREPARAÇÃO DADOS DO RESPONSÁVEL (WHATSAPP É CHAVE FORTE) ---
+      // --- DADOS DO RESPONSÁVEL ---
       $whats_limpo = preg_replace('/\D/', '', $this->request->getPost('responsavel_whats'));
 
       $dados_resp = [
@@ -158,20 +375,17 @@ class Bombeiros extends Security_Controller
         'deleted' => 0
       ];
 
-      // LOGICA DE "LOCALIZAR OU CRIAR" RESPONSÁVEL
       $res_existente = $db->table('siamesa_responsaveis')->where('whats', $whats_limpo)->get()->getRow();
 
       if ($res_existente) {
-        // Se já existe esse WhatsApp, atualizamos os dados cadastrais
         $responsavel_id = $res_existente->id;
         $db->table('siamesa_responsaveis')->where('id', $responsavel_id)->update($dados_resp);
       } else {
-        // Se é novo, insere
         $db->table('siamesa_responsaveis')->insert($dados_resp);
         $responsavel_id = $db->insertID();
       }
 
-      // --- PREPARAÇÃO DADOS DO ALUNO ---
+      // --- DADOS DO ALUNO ---
       $dados_aluno = [
         'responsavel_id' => $responsavel_id,
         'nome_aluno' => trim($this->request->getPost('nome_aluno')),
@@ -186,11 +400,9 @@ class Bombeiros extends Security_Controller
       ];
 
       if ($id) {
-        // Atualização de Aluno
         $db->table('siamesa_alunos')->where('id', $id)->update($dados_aluno);
         $mensagem = "Dados atualizados com sucesso!";
       } else {
-        // Novo Aluno
         $dados_aluno['unidade_id'] = $this->request->getPost('unidade_id');
         $dados_aluno['data_matricula'] = date('Y-m-d');
         $dados_aluno['deleted'] = 0;
@@ -227,7 +439,7 @@ class Bombeiros extends Security_Controller
       $db->transComplete();
 
       if ($db->transStatus() === false) {
-        return $this->response->setJSON(["success" => false, "message" => "Erro na transação bancária."]);
+        return $this->response->setJSON(["success" => false, "message" => "Erro na transação."]);
       }
 
       return $this->response->setJSON(["success" => true, "message" => $mensagem]);
@@ -237,9 +449,6 @@ class Bombeiros extends Security_Controller
     }
   }
 
-  /**
-   * Gera HTML da lista de chamada por turma
-   */
   public function lista_chamada()
   {
     $db = db_connect();
@@ -265,10 +474,8 @@ class Bombeiros extends Security_Controller
       foreach ($alunos as $aluno) {
         $p_check = (isset($historico[$aluno['id']]) && $historico[$aluno['id']] == 1) ? 'checked' : '';
         $f_check = (isset($historico[$aluno['id']]) && $historico[$aluno['id']] == 0) ? 'checked' : '';
-
-        if (!isset($historico[$aluno['id']])) {
+        if (!isset($historico[$aluno['id']]))
           $f_check = 'checked';
-        }
 
         $html .= "<tr>
                             <td>{$aluno['nome_aluno']}</td>
@@ -285,18 +492,14 @@ class Bombeiros extends Security_Controller
     return $html;
   }
 
-  /**
-   * Salva a presença com lógica de Sobrescrever (Upsert)
-   */
   public function salvar_presenca()
   {
     $db = db_connect();
     $data_aula = $this->request->getPost('data_aula');
     $presencas = $this->request->getPost('presencas');
 
-    if (!$data_aula || empty($presencas)) {
+    if (!$data_aula || empty($presencas))
       return $this->response->setJSON(["success" => false, "message" => "Nenhum dado recebido."]);
-    }
 
     try {
       $db->transStart();
@@ -305,44 +508,30 @@ class Bombeiros extends Security_Controller
         $registro = $db->table('siamesa_presenca')->where($where)->get()->getRow();
 
         if ($registro) {
-          $db->table('siamesa_presenca')
-            ->where('id', $registro->id)
-            ->update(['status' => (int) $status]);
+          $db->table('siamesa_presenca')->where('id', $registro->id)->update(['status' => (int) $status]);
         } else {
-          $db->table('siamesa_presenca')->insert([
-            'aluno_id' => $aluno_id,
-            'data_aula' => $data_aula,
-            'status' => (int) $status
-          ]);
+          $db->table('siamesa_presenca')->insert(['aluno_id' => $aluno_id, 'data_aula' => $data_aula, 'status' => (int) $status]);
         }
       }
       $db->transComplete();
+      if ($db->transStatus() === false)
+        return $this->response->setJSON(["success" => false, "message" => "Erro ao gravar no banco."]);
 
-      // VERIFICAÇÃO REAL: Se a transação falhou (ex: erro de SQL), retorna erro
-      if ($db->transStatus() === false) {
-        return $this->response->setJSON(["success" => false, "message" => "Erro ao gravar no banco de dados."]);
-      }
-
-      return $this->response->setJSON(["success" => true, "message" => "Chamada salva com sucesso!"]);
+      return $this->response->setJSON(["success" => true, "message" => "Chamada salva!"]);
     } catch (\Exception $e) {
       return $this->response->setJSON(["success" => false, "message" => $e->getMessage()]);
     }
   }
 
-  /**
-   * Importação via CSV com suporte a Camisetas
-   */
   public function importar_csv()
   {
     $file = $this->request->getFile('file');
-    if (!$file || !$file->isValid()) {
+    if (!$file || !$file->isValid())
       return $this->response->setJSON(["success" => false, "message" => "Arquivo inválido."]);
-    }
 
     $db = db_connect();
     $filePath = $file->getTempName();
 
-    // Lida com encoding para evitar caracteres estranhos
     $content = file_get_contents($filePath);
     if (!mb_check_encoding($content, 'UTF-8')) {
       $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
@@ -350,12 +539,11 @@ class Bombeiros extends Security_Controller
     }
 
     $handle = fopen($filePath, "r");
-    fgetcsv($handle, 2000, ";"); // Pula o cabeçalho do seu modelo
+    fgetcsv($handle, 2000, ";");
 
     $importados = 0;
     $unidade_padrao = 1;
 
-    // Helpers de limpeza
     $converteData = function ($data) {
       if (empty(trim($data)))
         return null;
@@ -372,11 +560,9 @@ class Bombeiros extends Security_Controller
     try {
       while (($row = fgetcsv($handle, 2000, ";")) !== FALSE) {
         if (count($row) < 14)
-          continue; // Pula linhas incompletas
+          continue;
 
         $db->transStart();
-
-        // 1. RESPONSÁVEL (Colunas 0 a 12)
         $cpf_resp = $limpaDoc($row[3]);
         $resp_id = null;
 
@@ -410,7 +596,6 @@ class Bombeiros extends Security_Controller
           $resp_id = $db->insertID();
         }
 
-        // 2. ALUNO (Colunas 13 a 25)
         $dados_aluno = [
           'unidade_id' => $unidade_padrao,
           'responsavel_id' => $resp_id,
@@ -418,7 +603,7 @@ class Bombeiros extends Security_Controller
           'nascimento_aluno' => $converteData($row[14]),
           'rg_aluno' => trim($row[15] ?? ''),
           'cpf_aluno' => $limpaDoc($row[16] ?? ''),
-          'turma' => trim($row[18]), // Coluna "Horario"
+          'turma' => trim($row[18]),
           'valor_mensalidade' => $limpaMoeda($row[19]),
           'data_matricula' => date('Y-m-d'),
           'data_inicio' => $converteData($row[24]),
@@ -429,7 +614,6 @@ class Bombeiros extends Security_Controller
 
         $db->table('siamesa_alunos')->insert($dados_aluno);
         $db->transComplete();
-
         if ($db->transStatus())
           $importados++;
       }
@@ -444,7 +628,6 @@ class Bombeiros extends Security_Controller
   {
     try {
       $db = db_connect();
-      // Usa Query Builder para que o CodeIgniter adicione o prefixo 'rise_' automaticamente
       $cobrancas = $db->table('siamesa_cobrancas c')
         ->select('c.*, a.nome_aluno')
         ->join('siamesa_alunos a', 'a.id = c.aluno_id')
@@ -453,7 +636,6 @@ class Bombeiros extends Security_Controller
         ->orderBy('c.vencimento', 'ASC')
         ->get()->getResultArray();
 
-      // Agrupamos os pagamentos por ID do aluno para criar o efeito de dropdown
       $alunos_com_pagamentos = [];
       foreach ($cobrancas as $c) {
         $alunos_com_pagamentos[$c['aluno_id']]['nome_aluno'] = $c['nome_aluno'];
@@ -468,8 +650,6 @@ class Bombeiros extends Security_Controller
       }
 
       $view_data['alunos_com_pagamentos'] = $alunos_com_pagamentos;
-
-      // Retorna apenas o conteúdo HTML (sem o template completo) para evitar duplicar a sidebar
       return view("Bombeiros\Views\/lista_pagamentos", $view_data);
     } catch (\Exception $e) {
       return "<div class='alert alert-danger'>Erro ao carregar pagamentos: " . $e->getMessage() . "</div>";
@@ -481,11 +661,7 @@ class Bombeiros extends Security_Controller
     $db = db_connect();
     $id = $this->request->getPost('id');
     if ($id) {
-      $data_pagamento = date('Y-m-d H:i:s');
-      $db->table('siamesa_cobrancas')->where('id', $id)->update([
-        'status' => 'Pago',
-        'data_pagamento' => $data_pagamento
-      ]);
+      $db->table('siamesa_cobrancas')->where('id', $id)->update(['status' => 'Pago', 'data_pagamento' => date('Y-m-d H:i:s')]);
       return $this->response->setJSON(["success" => true, "message" => "Pagamento baixado com sucesso!"]);
     } else {
       return $this->response->setJSON(["success" => false, "message" => "Erro: ID não encontrado."]);
@@ -497,25 +673,11 @@ class Bombeiros extends Security_Controller
     try {
       $db = db_connect();
       $hoje = date('Y-m-d');
-
       $data = [];
 
-      // Calcula TOTAL de todas as parcelas PAGAS (sem filtrar por mês)
-      $data['total_pago'] = $db->table('siamesa_cobrancas')
-        ->where('status', 'Pago')
-        ->selectSum('valor')
-        ->get()
-        ->getRow()->valor ?? 0;
+      $data['total_pago'] = $db->table('siamesa_cobrancas')->where('status', 'Pago')->selectSum('valor')->get()->getRow()->valor ?? 0;
+      $data['total_pendente'] = $db->table('siamesa_cobrancas')->where('status', 'Pendente')->selectSum('valor')->get()->getRow()->valor ?? 0;
 
-      // Calcula TOTAL de todas as parcelas PENDENTES (sem filtrar por mês)
-      $data['total_pendente'] = $db->table('siamesa_cobrancas')
-        ->where('status', 'Pendente')
-        ->selectSum('valor')
-        ->get()
-        ->getRow()->valor ?? 0;
-
-      // Busca TODAS as parcelas inadimplentes (vencidas e pendentes)
-      // Cada parcela vencida aparece como uma linha separada
       $data['inadimplentes'] = $db->table('siamesa_cobrancas c')
         ->select('c.*, a.nome_aluno, r.nome as resp_nome, r.whats')
         ->join('siamesa_alunos a', 'a.id = c.aluno_id')
@@ -524,16 +686,13 @@ class Bombeiros extends Security_Controller
         ->where('c.status', 'Pendente')
         ->orderBy('c.vencimento', 'ASC')
         ->orderBy('a.nome_aluno', 'ASC')
-        ->get()
-        ->getResultArray();
+        ->get()->getResultArray();
 
-      // Calcula o total de inadimplência (soma de todas as parcelas vencidas)
       $data['total_inadimplencia'] = 0;
       foreach ($data['inadimplentes'] as $inad) {
         $data['total_inadimplencia'] += floatval($inad['valor']);
       }
 
-      // Retorna apenas o conteúdo HTML (sem o template completo) para evitar duplicar a sidebar
       return view("Bombeiros\Views\/financeiro_resumo", $data);
     } catch (\Exception $e) {
       return "<div class='alert alert-danger'>Erro ao carregar resumo financeiro: " . $e->getMessage() . "</div>";
@@ -548,44 +707,28 @@ class Bombeiros extends Security_Controller
     return $this->response->setJSON(["success" => true]);
   }
 
-  /**
-   * Lista de Responsáveis
-   */
   public function lista_responsaveis()
   {
     try {
       $db = db_connect();
-
-      // Busca todos os responsáveis - o campo deleted existe na tabela conforme estrutura mostrada
-      $view_data['responsaveis'] = $db->table('siamesa_responsaveis')
-        ->where('deleted', 0)
-        ->orderBy('nome', 'ASC')
-        ->get()->getResultArray();
-
-      // Retorna apenas o conteúdo HTML (sem o template completo) para evitar duplicar a sidebar
+      $view_data['responsaveis'] = $db->table('siamesa_responsaveis')->where('deleted', 0)->orderBy('nome', 'ASC')->get()->getResultArray();
       return view("Bombeiros\Views\lista_responsaveis", $view_data);
     } catch (\Exception $e) {
       return "<div class='alert alert-danger'>Erro ao carregar responsáveis: " . $e->getMessage() . "</div>";
     }
   }
 
-  /**
-   * Salva ou Atualiza Responsável
-   */
   public function salvar_responsavel()
   {
     $db = db_connect();
     try {
       $id = $this->request->getPost('id');
-
-      // LIMPEZA OBRIGATÓRIA: Remove tudo que não é número
       $whats = preg_replace('/\D/', '', $this->request->getPost('whats'));
       $cpf = preg_replace('/\D/', '', $this->request->getPost('cpf'));
       $cel = preg_replace('/\D/', '', $this->request->getPost('celular'));
 
-      if (empty($whats)) {
+      if (empty($whats))
         return $this->response->setJSON(["success" => false, "message" => "O WhatsApp é obrigatório."]);
-      }
 
       $dados = [
         'nome' => trim($this->request->getPost('nome')),
@@ -596,61 +739,33 @@ class Bombeiros extends Security_Controller
         'endereco' => trim($this->request->getPost('endereco'))
       ];
 
-      // Usa Query Builder para garantir que o prefixo da tabela seja aplicado corretamente
       $db->table('siamesa_responsaveis')->where('id', $id)->update($dados);
-
       return $this->response->setJSON(["success" => true]);
     } catch (\Exception $e) {
-      // Log para você ver o erro no servidor
-      log_message('error', 'Erro ao salvar responsável: ' . $e->getMessage());
       return $this->response->setJSON(["success" => false, "message" => "Erro no banco: " . $e->getMessage()]);
     }
   }
 
-  /**
-   * Deleta Responsável (soft delete)
-   */
   public function deletar_responsavel()
   {
     $db = db_connect();
     $id = $this->request->getPost('id');
-
-    // Verifica se o responsável tem alunos vinculados
-    $tem_alunos = $db->table('siamesa_alunos')
-      ->where(['responsavel_id' => $id, 'deleted' => 0])
-      ->countAllResults();
-
-    if ($tem_alunos > 0) {
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Não é possível excluir este responsável pois existem alunos vinculados a ele."
-      ]);
-    }
-
-    // Marca como deletado (soft delete)
+    $tem_alunos = $db->table('siamesa_alunos')->where(['responsavel_id' => $id, 'deleted' => 0])->countAllResults();
+    if ($tem_alunos > 0)
+      return $this->response->setJSON(["success" => false, "message" => "Existem alunos vinculados a este responsável."]);
     $db->table('siamesa_responsaveis')->where('id', $id)->update(['deleted' => 1]);
-
     return $this->response->setJSON(["success" => true, "message" => "Responsável removido com sucesso!"]);
   }
 
-  /**
-   * Busca dados para preencher o formulário de comprovante
-   */
   public function buscar_dados_comprovante()
   {
     try {
       $db = db_connect();
       $cobranca_id = $this->request->getPost('cobranca_id');
       $aluno_id = $this->request->getPost('aluno_id');
+      if (!$cobranca_id || !$aluno_id)
+        return $this->response->setJSON(["success" => false, "message" => "Dados incompletos."]);
 
-      if (!$cobranca_id || !$aluno_id) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Dados incompletos."
-        ]);
-      }
-
-      // Busca dados da cobrança, aluno e responsável
       $cobranca = $db->table('siamesa_cobrancas c')
         ->select('c.*, a.nome_aluno, a.responsavel_id, r.nome as responsavel_nome, r.cpf as responsavel_cpf')
         ->join('siamesa_alunos a', 'a.id = c.aluno_id')
@@ -659,28 +774,19 @@ class Bombeiros extends Security_Controller
         ->where('a.id', $aluno_id)
         ->get()->getRowArray();
 
-      if (!$cobranca) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Cobrança não encontrada."
-        ]);
-      }
+      if (!$cobranca)
+        return $this->response->setJSON(["success" => false, "message" => "Cobrança não encontrada."]);
 
-      // Formata CPF
       $cpf_formatado = $cobranca['responsavel_cpf'];
       if (strlen($cpf_formatado) == 11) {
-        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' .
-          substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
+        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' . substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
       }
 
-      // Determina o número da mensalidade baseado na competência ou posição
       $mensalidade_num = 1;
       if (!empty($cobranca['competencia'])) {
-        // Tenta extrair o número da competência ou calcular baseado na data
         preg_match('/^(\d+)\//', $cobranca['competencia'], $matches);
-        if (!empty($matches[1])) {
+        if (!empty($matches[1]))
           $mensalidade_num = (int) $matches[1];
-        }
       }
 
       return $this->response->setJSON([
@@ -698,23 +804,16 @@ class Bombeiros extends Security_Controller
       ]);
 
     } catch (\Exception $e) {
-      log_message('error', 'Erro ao buscar dados do comprovante: ' . $e->getMessage());
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro ao buscar dados: " . $e->getMessage()
-      ]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro ao buscar dados: " . $e->getMessage()]);
     }
   }
 
-  /**
-   * Gera o comprovante de pagamento
-   */
   public function gerar_comprovante()
   {
     try {
       $db = db_connect();
 
-      // Recebe dados do formulário
+      // 1. Recebimento dos dados
       $cobranca_id = $this->request->getPost('cobranca_id');
       $aluno_id = $this->request->getPost('aluno_id');
       $responsavel_nome = trim($this->request->getPost('responsavel_nome'));
@@ -728,50 +827,25 @@ class Bombeiros extends Security_Controller
       $data_emissao = $this->request->getPost('data_emissao');
       $data_conferencia = $this->request->getPost('data_conferencia') ?: null;
 
-      // Validações
       if (!$cobranca_id || !$aluno_id || !$responsavel_nome || !$aluno_nome || !$valor_str || !$forma_pagamento) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Por favor, preencha todos os campos obrigatórios."
-        ]);
+        return $this->response->setJSON(["success" => false, "message" => "Preencha todos os campos obrigatórios."]);
       }
 
-      // Converte valor de string (ex: "150,00") para float
-      $valor = str_replace('.', '', $valor_str);
-      $valor = str_replace(',', '.', $valor);
-      $valor = floatval($valor);
+      $valor = floatval(str_replace(',', '.', str_replace('.', '', $valor_str)));
 
-      // Busca dados do responsável e aluno para validar
-      $aluno = $db->table('siamesa_alunos')
-        ->where('id', $aluno_id)
-        ->get()->getRowArray();
-
-      if (!$aluno) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Aluno não encontrado."
-        ]);
-      }
-
-      $responsavel_id = $aluno['responsavel_id'];
-
-      // Gera número do comprovante (formato: COMP-YYYYMMDD-XXXX)
+      // Formatação CPF e Número
       $numero_comprovante = 'COMP-' . date('Ymd') . '-' . str_pad($cobranca_id, 4, '0', STR_PAD_LEFT);
-
-      // Formata CPF
       $cpf_formatado = $responsavel_cpf;
       if (strlen($cpf_formatado) == 11) {
-        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' .
-          substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
+        $cpf_formatado = substr($cpf_formatado, 0, 3) . '.' . substr($cpf_formatado, 3, 3) . '.' . substr($cpf_formatado, 6, 3) . '-' . substr($cpf_formatado, 9, 2);
       }
 
-      // Prepara dados para inserção
       $db->transStart();
 
+      // 2. Inserir Comprovante
       $dados_comprovante = [
         'numero_comprovante' => $numero_comprovante,
         'data_emissao' => $data_emissao ?: date('Y-m-d'),
-        'responsavel_id' => $responsavel_id,
         'responsavel_nome' => $responsavel_nome,
         'responsavel_cpf' => $cpf_formatado,
         'aluno_id' => $aluno_id,
@@ -789,15 +863,15 @@ class Bombeiros extends Security_Controller
       $db->table('siamesa_comprovantes')->insert($dados_comprovante);
       $comprovante_id = $db->insertID();
 
-      if (!$comprovante_id) {
-        $db->transRollback();
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro ao salvar comprovante no banco de dados."
+      // 3. BAIXA AUTOMÁTICA DA COBRANÇA (Isso garante que saia do Financeiro Resumo)
+      if ($cobranca_id) {
+        $db->table('siamesa_cobrancas')->where('id', $cobranca_id)->update([
+          'status' => 'Pago',
+          'data_pagamento' => date('Y-m-d H:i:s')
         ]);
       }
 
-      // Prepara dados para o template
+      // 4. Gerar Arquivo HTML
       $view_data = [
         'numero_comprovante' => $numero_comprovante,
         'data_emissao' => date('d/m/Y', strtotime($data_emissao ?: date('Y-m-d'))),
@@ -812,83 +886,42 @@ class Bombeiros extends Security_Controller
         'data_conferencia' => $data_conferencia ? date('d/m/Y', strtotime($data_conferencia)) : ''
       ];
 
-      // Gera HTML do comprovante
       $html = view("Bombeiros\Views\comprovante_template", $view_data);
-
-      // Salva HTML em arquivo temporário
       $upload_path = WRITEPATH . 'uploads/comprovantes/';
-      if (!is_dir($upload_path)) {
+      if (!is_dir($upload_path))
         @mkdir($upload_path, 0755, true);
-        // Cria arquivo .htaccess para proteger o diretório se necessário
-        if (file_exists($upload_path)) {
-          file_put_contents($upload_path . '.htaccess', 'deny from all');
-        }
-      }
 
       $filename = 'comprovante_' . $comprovante_id . '_' . time() . '.html';
-      $filepath = $upload_path . $filename;
-      file_put_contents($filepath, $html);
+      file_put_contents($upload_path . $filename, $html);
 
-      // Atualiza o caminho do arquivo no banco
-      $db->table('siamesa_comprovantes')
-        ->where('id', $comprovante_id)
-        ->update(['arquivo_path' => 'uploads/comprovantes/' . $filename]);
+      $db->table('siamesa_comprovantes')->where('id', $comprovante_id)->update(['arquivo_path' => 'uploads/comprovantes/' . $filename]);
 
       $db->transComplete();
 
       if ($db->transStatus() === false) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro na transação do banco de dados."
-        ]);
+        return $this->response->setJSON(["success" => false, "message" => "Erro na transação."]);
       }
 
-      // URLs para visualizar e baixar o comprovante
-      $download_url = get_uri("bombeiros/baixar_comprovante/" . $comprovante_id);
-      $visualizar_url = get_uri("bombeiros/visualizar_comprovante/" . $comprovante_id);
-
+      // RETORNO JSON COM A URL DE DOWNLOAD
       return $this->response->setJSON([
         "success" => true,
-        "message" => "Comprovante gerado com sucesso!",
-        "comprovante_id" => $comprovante_id,
-        "numero_comprovante" => $numero_comprovante,
-        "download_url" => $download_url,
-        "pdf_url" => $visualizar_url
+        "message" => "Pagamento baixado e comprovante gerado!",
+        "download_url" => get_uri("bombeiros/baixar_comprovante/" . $comprovante_id) // URL específica para forçar download
       ]);
 
     } catch (\Exception $e) {
-      log_message('error', 'Erro ao gerar comprovante: ' . $e->getMessage());
-      log_message('error', 'Trace: ' . $e->getTraceAsString());
-
-      if (isset($db) && $db->transStatus() !== false) {
-        $db->transRollback();
-      }
-
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro ao gerar comprovante: " . $e->getMessage()
-      ]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
     }
   }
 
-  /**
-   * Baixa o comprovante gerado (força download)
-   */
   public function baixar_comprovante($comprovante_id)
   {
     try {
       $db = db_connect();
-
-      $comprovante = $db->table('siamesa_comprovantes')
-        ->where('id', $comprovante_id)
-        ->where('deleted', 0)
-        ->get()->getRowArray();
-
-      if (!$comprovante) {
+      $comprovante = $db->table('siamesa_comprovantes')->where('id', $comprovante_id)->where('deleted', 0)->get()->getRowArray();
+      if (!$comprovante)
         return "Comprovante não encontrado.";
-      }
 
-      // Prepara dados para o template
       $view_data = [
         'numero_comprovante' => $comprovante['numero_comprovante'],
         'data_emissao' => $comprovante['data_emissao'] ? date('d/m/Y', strtotime($comprovante['data_emissao'])) : '',
@@ -903,201 +936,160 @@ class Bombeiros extends Security_Controller
         'data_conferencia' => $comprovante['data_conferencia'] ? date('d/m/Y', strtotime($comprovante['data_conferencia'])) : ''
       ];
 
-      // Renderiza o template
       $html = view("Bombeiros\Views\comprovante_template", $view_data);
-
-      // Força download do arquivo
       $filename = 'Comprovante_SIAMESA_' . $comprovante['numero_comprovante'] . '.html';
 
       $this->response->setHeader('Content-Type', 'text/html; charset=utf-8');
       $this->response->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"');
       $this->response->setBody($html);
-
       return $this->response;
 
     } catch (\Exception $e) {
-      log_message('error', 'Erro ao baixar comprovante: ' . $e->getMessage());
-      return "Erro ao baixar comprovante: " . $e->getMessage();
+      return "Erro: " . $e->getMessage();
     }
   }
 
-  /**
-   * Busca dados de uma unidade
-   */
   public function buscar_unidade()
   {
     try {
       $db = db_connect();
       $id = $this->request->getPost('id');
-
-      if (!$id) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "ID não informado."
-        ]);
-      }
-
-      $unidade = $db->table('siamesa_unidades')
-        ->where('id', $id)
-        ->where('deleted', 0)
-        ->get()->getRowArray();
-
-      if (!$unidade) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Unidade não encontrada."
-        ]);
-      }
-
-      return $this->response->setJSON([
-        "success" => true,
-        "data" => $unidade
-      ]);
-
+      if (!$id)
+        return $this->response->setJSON(["success" => false, "message" => "ID não informado."]);
+      $unidade = $db->table('siamesa_unidades')->where('id', $id)->where('deleted', 0)->get()->getRowArray();
+      if (!$unidade)
+        return $this->response->setJSON(["success" => false, "message" => "Unidade não encontrada."]);
+      return $this->response->setJSON(["success" => true, "data" => $unidade]);
     } catch (\Exception $e) {
-      log_message('error', 'Erro ao buscar unidade: ' . $e->getMessage());
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro ao buscar unidade: " . $e->getMessage()
-      ]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
     }
   }
 
-  /**
-   * Salva ou atualiza unidade
-   */
   public function salvar_unidade()
   {
     try {
       $db = db_connect();
-
       $id = $this->request->getPost('id');
       $nome_unidade = trim($this->request->getPost('nome_unidade'));
       $cidade = trim($this->request->getPost('cidade'));
       $endereco = trim($this->request->getPost('endereco')) ?: null;
       $status = $this->request->getPost('status') ?: 'Ativo';
 
-      if (!$nome_unidade || !$cidade) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Nome da unidade e cidade são obrigatórios."
-        ]);
-      }
+      if (!$nome_unidade || !$cidade)
+        return $this->response->setJSON(["success" => false, "message" => "Nome e cidade são obrigatórios."]);
 
-      $dados = [
-        'nome_unidade' => $nome_unidade,
-        'cidade' => $cidade,
-        'endereco' => $endereco,
-        'status' => $status
-      ];
-
+      $dados = ['nome_unidade' => $nome_unidade, 'cidade' => $cidade, 'endereco' => $endereco, 'status' => $status];
       $db->transStart();
-
       if ($id) {
-        // Atualização
-        $db->table('siamesa_unidades')
-          ->where('id', $id)
-          ->update($dados);
-
-        $mensagem = "Unidade atualizada com sucesso!";
+        $db->table('siamesa_unidades')->where('id', $id)->update($dados);
+        $mensagem = "Unidade atualizada!";
       } else {
-        // Novo cadastro
         $dados['deleted'] = 0;
         $db->table('siamesa_unidades')->insert($dados);
-
-        $mensagem = "Unidade cadastrada com sucesso!";
+        $mensagem = "Unidade cadastrada!";
       }
-
       $db->transComplete();
+      if ($db->transStatus() === false)
+        return $this->response->setJSON(["success" => false, "message" => "Erro ao salvar."]);
+      return $this->response->setJSON(["success" => true, "message" => $mensagem]);
+    } catch (\Exception $e) {
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
+    }
+  }
+  /**
+   * Função auxiliar para extrair texto de DOCX
+   */
+  private function readDocx($filePath)
+  {
+    if (!file_exists($filePath))
+      return "Arquivo não existe no servidor.";
 
-      if ($db->transStatus() === false) {
-        $error = $db->error();
-        log_message('error', 'Erro ao salvar unidade: ' . json_encode($error));
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Erro ao salvar: " . ($error['message'] ?? 'Erro desconhecido')
-        ]);
+    $zip = new \ZipArchive;
+
+    // Tenta abrir o arquivo. Se falhar, geralmente é porque a extensão ZIP não está ativa no PHP
+    if ($zip->open($filePath) === TRUE) {
+      // No padrão DOCX, o texto fica em word/document.xml
+      $index = $zip->locateName('word/document.xml');
+
+      if ($index !== false) {
+        $data = $zip->getFromIndex($index);
+        $zip->close();
+
+        // Limpa tags XML para sobrar apenas o texto
+        $dom = new \DOMDocument;
+        // Os flags abaixo evitam erros de parsing do XML e warnings nos logs
+        $dom->loadXML($data, LIBXML_NOENT | LIBXML_XINCLUDE | LIBXML_NOERROR | LIBXML_NOWARNING);
+
+        return strip_tags($dom->saveXML());
+      }
+      $zip->close();
+      return "Erro: O arquivo DOCX não tem o formato padrão (document.xml não encontrado).";
+    }
+
+    return "Erro: Falha ao abrir o arquivo. Verifique se a extensão 'php-zip' está habilitada no seu PHP.ini.";
+  }
+  public function processar_arquivo_word()
+  {
+    $file = $this->request->getFile('arquivo'); // ou o nome do seu input file
+
+    if ($file->isValid() && !$file->hasMoved()) {
+      // Move para uma pasta temporária para poder ler
+      $newName = $file->getRandomName();
+      $file->move(WRITEPATH . 'uploads', $newName);
+
+      $path = WRITEPATH . 'uploads/' . $newName;
+
+      // USA A FUNÇÃO CRIADA ACIMA
+      $textoDoWord = $this->readDocx($path);
+
+      if ($textoDoWord === false || (is_string($textoDoWord) && strpos($textoDoWord, 'Erro:') === 0)) {
+        // Remove o arquivo temporário em caso de erro
+        if (file_exists($path)) {
+          unlink($path);
+        }
+        $mensagemErro = ($textoDoWord !== false && is_string($textoDoWord)) ? $textoDoWord : 'Falha ao ler DOCX';
+        return $this->response->setJSON(['success' => false, 'message' => $mensagemErro]);
       }
 
-      return $this->response->setJSON([
-        "success" => true,
-        "message" => $mensagem
-      ]);
+      // Agora $textoDoWord tem o conteúdo limpo.
+      // Faça o que precisa fazer...
 
-    } catch (\Exception $e) {
-      log_message('error', 'Exception ao salvar unidade: ' . $e->getMessage());
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro: " . $e->getMessage()
-      ]);
+      // Remove o arquivo temporário
+      if (file_exists($path)) {
+        unlink($path);
+      }
+
+      return $this->response->setJSON(['success' => true, 'data' => $textoDoWord]);
+    } else {
+      return $this->response->setJSON(['success' => false, 'message' => 'Arquivo inválido']);
     }
   }
 
-  /**
-   * Deleta unidade (soft delete)
-   */
   public function deletar_unidade()
   {
     try {
       $db = db_connect();
       $id = $this->request->getPost('id');
-
-      if (!$id) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "ID não informado."
-        ]);
-      }
-
-      // Verifica se a unidade tem alunos vinculados
-      $tem_alunos = $db->table('siamesa_alunos')
-        ->where(['unidade_id' => $id, 'deleted' => 0])
-        ->countAllResults();
-
-      if ($tem_alunos > 0) {
-        return $this->response->setJSON([
-          "success" => false,
-          "message" => "Não é possível excluir esta unidade pois existem alunos vinculados a ela."
-        ]);
-      }
-
-      // Marca como deletado (soft delete)
-      $db->table('siamesa_unidades')
-        ->where('id', $id)
-        ->update(['deleted' => 1]);
-
-      return $this->response->setJSON([
-        "success" => true,
-        "message" => "Unidade removida com sucesso!"
-      ]);
-
+      if (!$id)
+        return $this->response->setJSON(["success" => false, "message" => "ID não informado."]);
+      $tem_alunos = $db->table('siamesa_alunos')->where(['unidade_id' => $id, 'deleted' => 0])->countAllResults();
+      if ($tem_alunos > 0)
+        return $this->response->setJSON(["success" => false, "message" => "Existem alunos nesta unidade."]);
+      $db->table('siamesa_unidades')->where('id', $id)->update(['deleted' => 1]);
+      return $this->response->setJSON(["success" => true, "message" => "Unidade removida!"]);
     } catch (\Exception $e) {
-      log_message('error', 'Exception ao deletar unidade: ' . $e->getMessage());
-      return $this->response->setJSON([
-        "success" => false,
-        "message" => "Erro: " . $e->getMessage()
-      ]);
+      return $this->response->setJSON(["success" => false, "message" => "Erro: " . $e->getMessage()]);
     }
   }
 
-  /**
-   * Visualiza o comprovante gerado
-   */
   public function visualizar_comprovante($comprovante_id)
   {
     try {
       $db = db_connect();
-
-      $comprovante = $db->table('siamesa_comprovantes')
-        ->where('id', $comprovante_id)
-        ->where('deleted', 0)
-        ->get()->getRowArray();
-
-      if (!$comprovante) {
+      $comprovante = $db->table('siamesa_comprovantes')->where('id', $comprovante_id)->where('deleted', 0)->get()->getRowArray();
+      if (!$comprovante)
         return "Comprovante não encontrado.";
-      }
 
-      // Prepara dados para o template
       $view_data = [
         'numero_comprovante' => $comprovante['numero_comprovante'],
         'data_emissao' => $comprovante['data_emissao'] ? date('d/m/Y', strtotime($comprovante['data_emissao'])) : '',
@@ -1111,13 +1103,9 @@ class Bombeiros extends Security_Controller
         'conferido_por' => $comprovante['conferido_por'] ?: '',
         'data_conferencia' => $comprovante['data_conferencia'] ? date('d/m/Y', strtotime($comprovante['data_conferencia'])) : ''
       ];
-
-      // Renderiza o template
       return view("Bombeiros\Views\comprovante_template", $view_data);
-
     } catch (\Exception $e) {
-      log_message('error', 'Erro ao visualizar comprovante: ' . $e->getMessage());
-      return "Erro ao carregar comprovante: " . $e->getMessage();
+      return "Erro: " . $e->getMessage();
     }
   }
 }
