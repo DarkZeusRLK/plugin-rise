@@ -1,4 +1,4 @@
 # Arquivo .gitignore
-chave.env
+**/chave.env
 /vendor
 /writable
